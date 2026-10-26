@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -29,15 +31,42 @@ from agent_engine.storage.repository import (
 from agent_engine.tools.registry import ToolRegistry
 
 
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
+
+
 @dataclass
 class Settings:
     api_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     database_url: str = field(default_factory=default_database_url)
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]", "testserver")
+    cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
 
     def __post_init__(self):
         if len(self.api_token) < 16:
             raise ValueError("AGENTOS_API_TOKEN must have at least 16 characters.")
+        self.cors_origins = tuple(
+            dict.fromkeys(origin.strip().rstrip("/") for origin in self.cors_origins)
+        )
+        for origin in self.cors_origins:
+            parsed = urlsplit(origin)
+            if (
+                origin == "*"
+                or parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError(
+                    "CORS origins must be exact http or https origins without paths."
+                )
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -47,6 +76,12 @@ class Settings:
         if hosts := os.environ.get("AGENTOS_ALLOWED_HOSTS"):
             values["allowed_hosts"] = tuple(
                 host.strip() for host in hosts.split(",") if host.strip()
+            )
+        if "AGENTOS_CORS_ORIGINS" in os.environ:
+            values["cors_origins"] = tuple(
+                origin.strip()
+                for origin in os.environ["AGENTOS_CORS_ORIGINS"].split(",")
+                if origin.strip()
             )
         return cls(**values)
 
@@ -150,6 +185,13 @@ def create_app(
         openapi_url=None,
     )
     app.state.service = service
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     bearer = HTTPBearer(auto_error=False)
 

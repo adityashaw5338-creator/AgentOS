@@ -149,6 +149,18 @@ offsets must be nonnegative. The dashboard loads 25 tasks at a time.
 | AGENTOS_DATA_DIR | ~/.agentos |
 | AGENTOS_DATABASE_URL | SQLite tasks.db in that directory |
 | AGENTOS_ALLOWED_HOSTS | 127.0.0.1,localhost,[::1],testserver |
+| AGENTOS_CORS_ORIGINS | localhost and 127.0.0.1 on ports 3000 and 5173 |
+
+For a separately hosted frontend, set `AGENTOS_CORS_ORIGINS` to its exact origin or
+comma-separated origins before starting the server. For example, in PowerShell:
+
+```powershell
+$env:AGENTOS_CORS_ORIGINS = "http://localhost:5173"
+.\.venv\Scripts\agentos.exe serve
+```
+
+Origins must include the scheme and host (and port when used). Wildcard origins are
+rejected; browser requests still need the API bearer token.
 
 Export variables in the shell. Direct CLI use does not automatically load .env files.
 
