@@ -1,26 +1,7 @@
+"""Compatibility entry point; the implementation lives in agent_engine."""
 
-def add(a: float, b: float) -> float:
-    """Add two numbers."""
-    return a + b
-
-
-def multiply(a: float, b: float) -> float:
-    """Multiply two numbers."""
-    return a * b
-
-
-def subtract(a: float, b: float) -> float:
-    """Subtract the second number from the first."""
-    return a - b
-
-
-def divide(a: float, b: float) -> float:
-    """Divide the first number by the second."""
-    if b == 0:
-        raise ValueError("Cannot divide by zero.")
-    return a / b
-
-
-def power(a: float, b: float) -> float:
-    """Raise the first number to the power of the second."""
-    return a ** b
+from agent_engine.tools.calculator import add as add
+from agent_engine.tools.calculator import divide as divide
+from agent_engine.tools.calculator import multiply as multiply
+from agent_engine.tools.calculator import power as power
+from agent_engine.tools.calculator import subtract as subtract

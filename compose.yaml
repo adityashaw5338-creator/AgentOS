@@ -1,0 +1,14 @@
+services:
+  agentos:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      AGENTOS_API_TOKEN: ${AGENTOS_API_TOKEN:?Set AGENTOS_API_TOKEN in .env}
+      AGENTOS_ALLOWED_HOSTS: ${AGENTOS_ALLOWED_HOSTS:-localhost,127.0.0.1}
+    volumes:
+      - agentos-data:/data
+    restart: unless-stopped
+
+volumes:
+  agentos-data:

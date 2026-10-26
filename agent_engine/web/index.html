@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f7f8">
+  <meta name="description" content="Run and inspect controlled AgentOS tool workflows.">
+  <title>AgentOS · Local workspace</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to workspace</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <a class="brand" href="#tasks" aria-label="AgentOS tasks">
+        <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M3 23 12 5h4l9 18M7 17h14M14 10v11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>AgentOS</span>
+      </a>
+      <div class="workspace-label">Local workspace</div>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#tasks" class="nav-item active" data-route="tasks" aria-current="page"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg>Tasks</a>
+        <a href="#tools" class="nav-item" data-route="tools"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 5-4 5 4 5M13 5l4 5-4 5M11 3 9 17"/></svg>Tool registry<span id="nav-tool-count" class="nav-count"></span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="engine-identity"><span class="health-dot" id="engine-dot"></span><span id="engine-status">Checking engine…</span></div>
+        <p>Plan. Validate. Execute.</p>
+        <button id="disconnect" class="text-button" type="button" hidden>Disconnect</button>
+      </div>
+    </aside>
+    <header class="topbar">
+      <a class="mobile-brand" href="#tasks">AgentOS</a>
+      <span class="topbar-scope">Local workspace <span class="separator">/</span> <span id="breadcrumb">Tasks</span></span>
+      <div class="topbar-actions"><span id="connection-label">Disconnected</span><button id="mobile-disconnect" class="text-button mobile-disconnect" type="button" hidden>Disconnect</button><button id="refresh" class="icon-button" type="button" aria-label="Refresh saved tasks" title="Refresh saved tasks" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg></button></div>
+    </header>
+    <main id="main" class="sheet" tabindex="-1">
+      <section id="connect-view" class="connect-view" aria-labelledby="connect-heading">
+        <div class="connect-copy">
+          <h1 id="connect-heading">Connect to your engine</h1>
+          <p>Enter the access token printed when you started AgentOS to open your local workspace.</p>
+        </div>
+        <form id="connect-form" class="connect-form">
+          <label for="access-token">Access token</label>
+          <input id="access-token" name="token" type="password" autocomplete="off" spellcheck="false" required aria-describedby="token-hint connect-error">
+          <p class="field-hint" id="token-hint">Your token stays in this tab’s memory. Refreshing the page disconnects the workspace.</p>
+          <p id="connect-error" class="form-error" role="alert" hidden></p>
+          <button class="button primary" id="connect-button" type="submit">Connect workspace</button>
+        </form>
+        <div class="connect-guide">
+          <h2>Start the local server</h2>
+          <code>agentos serve</code>
+          <p>The terminal prints your workspace address and access token. Keep that terminal running while you work.</p>
+        </div>
+      </section>
+      <div id="workspace" hidden>
+        <section id="tasks-view" aria-labelledby="tasks-heading">
+          <div class="page-heading"><div><h1 id="tasks-heading">Tasks</h1><p>Turn a goal into a tool plan. Keep every step in view.</p></div><span id="freshness" class="freshness"></span></div>
+          <button id="mobile-new-task" class="button secondary mobile-compose-toggle" type="button" aria-expanded="true" aria-controls="task-composer">Hide task form</button>
+          <section id="task-composer" class="composer" aria-labelledby="composer-heading">
+            <form id="task-form">
+              <div class="composer-heading"><h2 id="composer-heading">New task</h2><span class="small-text">Arithmetic or a structured plan</span></div>
+              <label class="sr-only" for="goal">Task goal</label>
+              <textarea id="goal" name="goal" rows="2" maxlength="4000" required spellcheck="false" placeholder="For example, calculate (2 + 3) * 4" aria-describedby="goal-hint composer-message"></textarea>
+              <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step before execution</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>
+              <p id="composer-message" class="form-message" role="status" hidden></p>
+            </form>
+            <div class="example-row" id="goal-hint"><span>Try a goal</span><button class="example-button" type="button" data-example="add 12 and 8">add 12 and 8</button><button class="example-button" type="button" data-example="calculate (2 + 3) * 4">calculate (2 + 3) * 4</button><button class="example-button" type="button" data-example="subtract 4 from 19">subtract 4 from 19</button></div>
+          </section>
+          <div class="work-area">
+            <section id="task-list-section" class="task-list-section" aria-labelledby="history-heading">
+              <div class="section-heading"><h2 id="history-heading">Saved tasks</h2><span id="task-total" class="small-text">Loading…</span></div>
+              <div class="filter-tabs" role="group" aria-label="Filter tasks by status"><button class="filter-tab selected" type="button" data-filter="" aria-pressed="true">All</button><button class="filter-tab" type="button" data-filter="waiting_for_approval" aria-pressed="false">Needs approval <span id="approval-count"></span></button><button class="filter-tab" type="button" data-filter="completed" aria-pressed="false">Completed</button><button class="filter-tab" type="button" data-filter="failed" aria-pressed="false">Failed</button></div>
+              <div class="list-toolbar"><label class="sr-only" for="task-search">Search task goals</label><input id="task-search" type="search" placeholder="Search task goals…" maxlength="200"><span class="small-text">Newest first</span></div>
+              <div id="list-error" class="block-error" role="alert" hidden></div>
+              <div id="task-list" class="task-list" aria-live="polite" aria-busy="false"></div>
+              <div class="list-footer"><span id="list-range" class="small-text"></span><button id="load-more" class="text-button" type="button" hidden>Load more</button></div>
+            </section>
+            <section id="task-detail" class="task-detail" aria-labelledby="detail-heading">
+              <div class="detail-placeholder"><h2 id="detail-heading">Task details</h2><p>Select a saved task to inspect its tool calls, results, and execution history.</p><div class="detail-legend"><span>Goal</span><span>Tool plan</span><span>Result</span></div></div>
+            </section>
+          </div>
+        </section>
+        <section id="tools-view" aria-labelledby="tools-heading" hidden>
+          <div class="page-heading"><div><h1 id="tools-heading">Tool registry</h1><p>Only registered tools are available to the planner.</p></div><span id="tool-total" class="small-text"></span></div>
+          <p class="tools-help">Inspect a tool’s argument schema before building a structured plan. Tools that require approval always pause before execution.</p>
+          <div id="tool-list" class="tool-list"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <noscript><p class="noscript-message">The dashboard needs JavaScript. You can also run tasks with <code>agentos "add 2 and 3"</code> in your terminal.</p></noscript>
+</body>
+</html>

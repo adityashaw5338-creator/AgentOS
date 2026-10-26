@@ -1,0 +1,11 @@
+.git
+.venv
+.verification
+.taste-skill
+.impeccable
+.env
+__pycache__
+*.egg-info
+dist
+build
+tests

@@ -1,114 +1,233 @@
-# AgentOS — AI Agent Engine
+# AgentOS
 
-**A modular Python engine for task planning, tool execution, validation, and controlled AI agent workflows.**
+A modular Python agent engine with validated tools, persistent task history, a protected
+API, and a local dashboard.
 
-AgentOS is an actively developed project focused on building the core engine behind a reliable and extensible AI agent platform. It provides tools for breaking goals into executable steps, validating tool arguments, managing execution, handling temporary failures, and supporting human approval for sensitive operations.
+The built-in planner supports arithmetic requests and explicit JSON tool plans, with
+no API key required. The dashboard and CLI share persisted task history.
 
-> **Project status:** Early development  
-> **Current tests:** 40 passing automated tests
+## Quick start
 
-## Features
-
-- **Task Planning:** Converts user goals into structured execution steps.
-- **Tool Registry:** Registers tools and manages their metadata and argument requirements.
-- **Argument Validation:** Uses Pydantic to validate tool inputs.
-- **JSON Schema Generation:** Generates schemas describing the arguments accepted by registered tools.
-- **Task Execution:** Executes planned steps and tracks task status.
-- **Retry Handling:** Retries operations that encounter temporary failures.
-- **Human Approval:** Supports approval workflows for sensitive operations.
-- **Automated Testing:** Uses pytest to verify core functionality.
-
-## Technology Stack
-
-- Python 3.14
-- Pydantic
-- Pytest
-- SQLAlchemy
-
-## Project Structure
-
-```text
-agentos/
-├── agent_engine/
-│   ├── tools/
-│   │   └── registry.py
-│   ├── agent.py
-│   ├── executor.py
-│   └── planner.py
-├── tests/
-│   ├── test_agent_engine.py
-│   ├── test_storage.py
-│   ├── test_tool_planner.py
-│   └── test_tool_registry.py
-├── .gitignore
-├── pyproject.toml
-└── README.md
-```
-
-*The structure above illustrates the main project components; your local repository may contain additional files.*
-
-## Getting Started
-
-### 1. Clone the repository
-
-```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
-cd agentos
-```
-
-Replace the placeholder with your actual repository URL.
-
-### 2. Create a virtual environment
-
-```bash
-python -m venv .venv
-```
-
-Activate it on Windows PowerShell:
+Requires Python 3.11 or newer; Python 3.12 is recommended. Clone the repository or
+download and extract its source archive, then open the project directory.
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
+git clone https://github.com/adityashaw5338-creator/AgentOS.git
+cd AgentOS
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\agentos.exe serve
 ```
 
-### 3. Install dependencies
+On macOS/Linux, use `python3`, `.venv/bin/python`, and `.venv/bin/agentos`.
 
-Install the project's dependencies according to the configuration in `pyproject.toml`. If the project defines its dependencies there, you can generally run:
+Open **http://127.0.0.1:8000** and enter the access token printed in the terminal.
+The token changes on each start unless AGENTOS_API_TOKEN is configured. Stop with Ctrl+C.
 
-```bash
-python -m pip install -e ".[dev]"
+The dashboard supports task creation, plan previews, step arguments, results, execution
+logs, approvals, cancellation, history search, pagination, and a tool catalog.
+History starts empty. All displayed tasks come from the database. Fonts are bundled.
+
+## CLI examples
+
+```powershell
+.\.venv\Scripts\agentos.exe run "add 2 and 3"
+.\.venv\Scripts\agentos.exe run "subtract 2 from 10"
+.\.venv\Scripts\agentos.exe run "calculate (2 + 3) * 4"
+.\.venv\Scripts\agentos.exe plan "divide 10 by 2"
+.\.venv\Scripts\agentos.exe history
+.\.venv\Scripts\agentos.exe history --limit 25 --offset 25
+.\.venv\Scripts\agentos.exe show TASK_ID
+.\.venv\Scripts\agentos.exe resume TASK_ID
+.\.venv\Scripts\agentos.exe run --require-approval "calculate (2 + 3) * 4"
+.\.venv\Scripts\agentos.exe approve TASK_ID
+.\.venv\Scripts\agentos.exe cancel TASK_ID
+.\.venv\Scripts\agentos.exe tools --json
 ```
 
-### 4. Run the tests
+Legacy entry points work: `python -m agent_engine.cli "add 2 and 3"` and
+`python cli.py history`. Use --help for options. Failed tasks return a nonzero CLI exit
+code and remain in history.
 
-```bash
-python -m pytest -v
+In the dashboard, enter a goal and choose Run task or Preview plan. Enable Require approval
+to pause before every tool call. Approving releases only the current step. Pending and
+waiting tasks can be cancelled. The CLI and dashboard share history with the same database.
+
+## Engine behavior
+
+- Planning compiles anchored arithmetic requests or a bounded AST into actual tool calls.
+- Pydantic validates typed tool arguments, rejects unexpected fields, and generates schemas.
+- Execution resolves prior results, records outputs and attempts, and enforces approval gates.
+- ValueError is permanent; other tool exceptions may be retried, with bounded attempts.
+- SQLAlchemy stores complete task snapshots and uses optimistic revisions for updates.
+- Resuming clients claim a task before execution to avoid simultaneous duplicate tool calls.
+- Bearer tokens protect task data and actions. The dashboard keeps its token in memory.
+
+Built-in tools are add, subtract, multiply, divide, and power. Goals are limited to
+4,000 characters and plans to 32 steps. Calculator values must be finite real numbers
+with magnitude at most 1e100; exponents are bounded.
+
+Arbitrary Python, shell commands, file access, and web research are not built-in tools.
+The planner is deterministic. A configured AI provider and a broader tool catalog are
+future extensions.
+
+## Explicit plans and custom tools
+
+Enter a JSON object as the goal:
+
+```json
+{
+  "steps": [
+    {"step_id": 1, "tool_name": "add", "tool_args": {"a": 2, "b": 3}},
+    {
+      "step_id": 2,
+      "tool_name": "multiply",
+      "tool_args": {"a": {"$ref": 1}, "b": 4},
+      "requires_approval": true
+    }
+  ]
+}
 ```
 
-The current development baseline is **40 passing tests**. Your results may differ if the code changes.
+A $ref points to the integer ID of a previous step. The executor resolves its typed
+result before validating the receiving tool. Plans cannot supply approval or completion
+state. A registry approval requirement cannot be disabled by a plan.
 
-## Development Roadmap
+```python
+from agent_engine.agent import run_agent
+from agent_engine.tools.registry import ToolRegistry
 
-- Strengthen tool argument validation.
-- Expand automated test coverage.
-- Improve planning and execution capabilities.
-- Develop backend API and authentication integration.
-- Integrate database services and a dashboard.
-- Prepare the platform for deployment.
+def uppercase(text: str) -> str:
+    return text.upper()
 
-## Project Goals
+registry = ToolRegistry()
+registry.register("uppercase", uppercase, "Uppercase text.", requires_approval=True)
+state = run_agent(
+    '{"steps":[{"tool_name":"uppercase","tool_args":{"text":"hello"}}]}',
+    registry=registry,
+)
+assert state.status.value == "waiting_for_approval"
+```
 
-AgentOS aims to provide a maintainable foundation for AI agents that can understand goals, plan actions, execute registered tools, recover from temporary failures, and request human approval when appropriate.
+Custom tools need typed keyword arguments and JSON-serializable results.
+Validated arguments reach the callable as their declared Python types, including nested
+Pydantic models. Saved plans retain serializable arguments across approval pauses.
+Use `create_app(repository=..., registry=...)` to serve a custom registry.
+Retried tools should be idempotent or implement idempotency keys; persistence cannot
+guarantee exactly-once external side effects.
 
-The project is being developed incrementally, with reliability, modularity, and controlled execution as key priorities.
+## API
+
+All `/api` routes except GET /api/health require `Authorization: Bearer YOUR_TOKEN`.
+The dashboard shell and bundled static assets are public; task data and actions are protected.
+
+| Route | Behavior |
+| --- | --- |
+| GET /api/health | Health and version |
+| GET /api/tools | Tool definitions and schemas |
+| GET /api/stats | Counts by task state |
+| GET /api/tasks | History; limit, offset, status, search |
+| GET /api/tasks/{id} | Task snapshot |
+| POST /api/tasks | Create a task |
+| POST /api/tasks/{id}/execute | Execute a pending preview |
+| POST /api/tasks/{id}/approve | Approve the current waiting step and continue |
+| POST /api/tasks/{id}/cancel | Cancel a pending or waiting task |
+| GET /api/openapi.json | Protected API contract |
+
+Create body: `{"goal":"add 2 and 3","execute":true,"require_approval":false}`.
+Action body: `{"revision": CURRENT_TASK_REVISION}`. Each action returns the new snapshot.
+Stale revisions and invalid transitions return 409, missing tasks 404, and invalid fields
+422. An unsupported but well-formed goal creates a saved failed task with a useful error.
+Search treats percent signs and underscores literally. History limits range from 1 to 500;
+offsets must be nonnegative. The dashboard loads 25 tasks at a time.
+
+## Configuration and deployment
+
+| Variable | Default |
+| --- | --- |
+| AGENTOS_API_TOKEN | Random startup token; configured values need at least 16 characters |
+| AGENTOS_DATA_DIR | ~/.agentos |
+| AGENTOS_DATABASE_URL | SQLite tasks.db in that directory |
+| AGENTOS_ALLOWED_HOSTS | 127.0.0.1,localhost,[::1],testserver |
+
+Export variables in the shell. Direct CLI use does not automatically load .env files.
+
+Docker: copy .env.example to .env, choose a token, then run `docker compose up --build`.
+Compose binds port 8000 to loopback and keeps the database in a named volume.
+Remote hosting needs configured allowed hosts, TLS, and an appropriate access policy.
+
+This first version uses one shared operator token, synchronous tools, and one server
+worker. A process stopped while running a claimed task leaves its state running. It is
+not automatically retried because a tool may already have produced a side effect.
+Multi-user accounts, distributed workers, crash recovery, database migrations, and AI
+provider integration remain follow-up work.
+
+## Development
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check agent_engine tests
+.\.venv\Scripts\python.exe -m build
+```
+
+The build produces a source distribution and a wheel in `dist/`, including the dashboard
+and licensed fonts. Install a wheel with `python -m pip install PATH_TO_WHEEL`.
+
+Tests cover parsing, unsupported/malicious expressions, schemas, approval enforcement,
+typed references, retries, persistence, stale updates, concurrent execution claims,
+API authentication, and CLI behavior. GitHub Actions checks Python 3.11, 3.12, and 3.14.
+
+For optional browser checks, see scripts/verify-dashboard.cjs and
+scripts/verify-dashboard-races.cjs. Playwright can live in a separate Node environment;
+set PLAYWRIGHT_MODULE_PATH if it is not locally resolvable. Point AGENTOS_TEST_URL and
+AGENTOS_TEST_TOKEN at an isolated server and database. The checks create real test tasks.
+The second script covers delayed refreshes, selection errors, keyboard approvals,
+mobile draft preservation, and disconnects during loading.
+
+For example, install Playwright into an isolated directory and start a test server in
+one PowerShell terminal:
+
+```powershell
+npm.cmd install --prefix .verification/browser --no-save --package-lock=false --ignore-scripts playwright
+$env:AGENTOS_DATABASE_URL = "sqlite:///:memory:"
+$env:AGENTOS_API_TOKEN = "dashboard-verification-token-2026"
+.\.venv\Scripts\agentos.exe serve --port 8017
+```
+
+In a second terminal, from the same project directory:
+
+```powershell
+$env:PLAYWRIGHT_MODULE_PATH = (Resolve-Path .verification/browser/node_modules/playwright).Path
+$env:AGENTOS_TEST_URL = "http://127.0.0.1:8017"
+$env:AGENTOS_TEST_TOKEN = "dashboard-verification-token-2026"
+node scripts/verify-dashboard.cjs
+node scripts/verify-dashboard-races.cjs
+```
+
+These scripts use installed Microsoft Edge in headless mode. Stop the isolated server
+with Ctrl+C when finished; its in-memory history is discarded. Browser screenshots are
+written under `.verification/` and are excluded from Git.
+
+```text
+agent_engine/
+  agent.py          # Orchestration and built-in registry
+  state.py          # Task and step models
+  tool_planner.py   # Executable arithmetic / JSON planner
+  executor.py       # Retries, approval, typed references
+  cli.py            # Task commands and dashboard server
+  api.py            # Protected FastAPI service
+  tools/            # Registry and calculators
+  storage/          # SQLAlchemy repository
+  web/              # Dashboard and licensed fonts
+tests/              # Behavioral and integration tests
+```
 
 ## Contributing
 
-Suggestions, bug reports, and contributions are welcome. Please test changes before submitting them and avoid committing credentials, API keys, or other sensitive information.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and tool contracts,
+[DESIGN.md](DESIGN.md) for the dashboard system, and [CHANGELOG.md](CHANGELOG.md) for changes.
 
-## License
-
-No license has been specified yet. Until a license is added, the repository should not be assumed to grant permission to reuse or redistribute its code.
-
----
-
-**AgentOS — Building the foundation for reliable AI agents, one step at a time.**
+The maintainer has not selected a project license. IBM Plex fonts include their SIL
+Open Font License in agent_engine/web/fonts/OFL-IBM-Plex.txt.

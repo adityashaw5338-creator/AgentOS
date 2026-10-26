@@ -1,0 +1,8 @@
+include README.md CONTRIBUTING.md PRODUCT.md DESIGN.md CHANGELOG.md
+include __init__.py agent.py calculator.py cli.py executor.py planner.py
+include Dockerfile compose.yaml .dockerignore .env.example .gitignore .gitattributes
+recursive-include .github *.yml
+recursive-include scripts *.cjs
+recursive-include tests *.py
+recursive-include agent_engine/web *.html *.css *.js *.svg *.ttf *.txt
+global-exclude __pycache__ *.py[cod]
