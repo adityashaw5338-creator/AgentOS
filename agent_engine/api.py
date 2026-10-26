@@ -30,7 +30,6 @@ from agent_engine.storage.repository import (
 )
 from agent_engine.tools.registry import ToolRegistry
 
-
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -64,9 +63,7 @@ class Settings:
                 or parsed.username
                 or parsed.password
             ):
-                raise ValueError(
-                    "CORS origins must be exact http or https origins without paths."
-                )
+                raise ValueError("CORS origins must be exact http or https origins without paths.")
 
     @classmethod
     def from_env(cls) -> Settings:
