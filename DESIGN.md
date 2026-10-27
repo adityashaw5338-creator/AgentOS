@@ -15,7 +15,7 @@ colors:
   border: "#e8eaec"
   rule: "#f0f1f2"
   control: "#cdced1"
-  hover: "#303335"
+  hover: "#155567"
   selection: "#d5e9ee"
   positiveBackground: "#dcfae5"
   positiveInk: "#04250e"
@@ -25,6 +25,28 @@ colors:
   warningBorder: "#f0dfb4"
   runningBackground: "#e3f1f4"
   neutralInk: "#353736"
+  darkGround: "#101112"
+  darkSurface: "#191b1c"
+  darkRaised: "#212425"
+  darkActive: "#2b3031"
+  darkBorder: "#343a3b"
+  darkControl: "#647174"
+  darkText: "#edf3f2"
+  darkMuted: "#acb8b7"
+  darkAccent: "#79ddd0"
+  darkPositive: "#85dbae"
+  darkNegative: "#ff9296"
+  darkWarning: "#f2c780"
+  darkPositiveBackground: "#1c372a"
+  darkNegativeBackground: "#40272b"
+  darkWarningBackground: "#352f22"
+  darkPrimaryHover: "#a0ecdf"
+  darkPrimaryInk: "#122725"
+  darkSelection: "#325953"
+  darkPositiveInk: "#a6eac2"
+  darkNegativeInk: "#ffc0c3"
+  darkWarningBorder: "#665638"
+  darkAccentSoft: "#203c38"
 typography:
   title:
     fontFamily: "IBM Plex Sans, system-ui, sans-serif"
@@ -58,7 +80,7 @@ spacing:
   compact: "12px"
 components:
   button-primary:
-    backgroundColor: "{colors.text}"
+    backgroundColor: "{colors.accent}"
     textColor: "{colors.surface}"
     rounded: "{rounded.control}"
     padding: "7px 14px"
@@ -106,6 +128,16 @@ controls follow familiar interface patterns.
 | border | #e8eaec | Surface edges |
 | rule | #f0f1f2 | Row separators |
 | control | #cdced1 | Input outlines and step connectors |
+
+## Color themes
+
+The top-bar Dark mode toggle is available before connection and remains visible on phones.
+The first paint follows the operating system unless `agentos.theme` stores an explicit
+light/dark choice. Only this preference is persisted; tokens and task data stay out of browser
+storage. Storage restrictions leave a working toggle with an in-memory preference.
+The charcoal theme uses mint actions and data, warm approval states, rose errors, and legible
+neutral secondary text. Native inputs, selection, focus, progress, status chips, and browser
+theme-color all follow the same theme. Keyboard theme switching is immediate.
 
 ## Typography
 

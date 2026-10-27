@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a persistent dark-mode toggle, system-theme defaults, and complete light/dark colors
+  for task states, inputs, results, and controls. Workspace tokens remain in tab memory.
 - Refined the dashboard task form, startup guide, registered-tool context, and current approval
   step, with visible planning feedback and reduced-motion-aware pointer press feedback.
 - Added failed-task editing and an explicit Local-planner recovery path that preserve other drafts

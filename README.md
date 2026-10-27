@@ -40,6 +40,10 @@ The dashboard supports task creation, plan previews, step arguments, results, ex
 logs, approvals, cancellation, history search, pagination, and a tool catalog.
 History starts empty. All displayed tasks come from the database. Fonts are bundled.
 
+Use **Dark mode** in the top bar to switch themes. AgentOS follows your system theme until
+you choose one, then remembers only that preference in browser storage. Your access token
+still stays in tab memory and is cleared when you disconnect or reload.
+
 Version 0.2.0 adds optional AI planning, execution checkpoints, interrupted-run recovery,
 and browser verification in CI. Existing task databases remain compatible.
 
