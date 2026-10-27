@@ -59,7 +59,11 @@
           <button id="mobile-new-task" class="button secondary mobile-compose-toggle" type="button" aria-expanded="true" aria-controls="task-composer">Hide task form</button>
           <section id="task-composer" class="composer" aria-labelledby="composer-heading">
             <form id="task-form">
-              <div class="composer-heading"><h2 id="composer-heading">New task</h2><span class="small-text">Arithmetic or a structured plan</span></div>
+              <div class="composer-heading"><h2 id="composer-heading">New task</h2><span id="composer-scope" class="small-text">Arithmetic or a structured plan</span></div>
+              <div class="planner-row">
+                <div class="planner-field"><label for="planner">Planner</label><select id="planner" name="planner" aria-describedby="planner-hint" aria-busy="false"><option value="local">Local</option><option id="planner-openai" value="openai" disabled>AI</option></select></div>
+                <p id="planner-hint" class="field-hint" role="status" hidden></p>
+              </div>
               <label class="sr-only" for="goal">Task goal</label>
               <textarea id="goal" name="goal" rows="2" maxlength="4000" required spellcheck="false" placeholder="For example, calculate (2 + 3) * 4" aria-describedby="goal-hint composer-message"></textarea>
               <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step before execution</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>

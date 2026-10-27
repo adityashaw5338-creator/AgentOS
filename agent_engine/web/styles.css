@@ -13,11 +13,13 @@
 body { margin: 0; background: var(--ground); color: var(--text); font: 14px/1.5 var(--font); -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button { cursor: pointer; touch-action: manipulation; user-select: none; }
 button:disabled { cursor: wait; color: var(--muted); background: var(--raised); }
 input, textarea { width: 100%; color: var(--text); background: var(--surface); border: 1px solid var(--control); border-radius: var(--radius-control); padding: 9px 12px; caret-color: var(--accent); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+select { color: var(--text); background: var(--surface); border: 1px solid var(--control); border-radius: var(--radius-control); padding: 7px 10px; min-height: 36px; max-width: 100%; }
+select:disabled { color: var(--muted); background: var(--raised); }
 textarea { resize: vertical; min-height: 74px; max-height: 340px; }
 input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--text); margin: 0; flex: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -67,6 +69,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .mobile-compose-toggle { display: none; }
 .composer-heading, .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
 .composer-heading .small-text { text-align: right; }
+.planner-row { display: grid; grid-template-columns: minmax(0, 210px) minmax(0, 1fr); gap: 16px; align-items: end; margin-bottom: 12px; }
+.planner-field { display: grid; min-width: 0; gap: 4px; }
+.planner-field label { color: var(--muted); font-size: 12px; }
+.planner-field select { width: 100%; }
+.planner-row .field-hint { padding-bottom: 6px; overflow-wrap: anywhere; }
 .composer-controls { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 12px; }
 .checkbox-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; min-height: 32px; }
 .button-row { display: flex; gap: 8px; flex: none; }
@@ -198,6 +205,9 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
   .composer { padding: 16px; }
   .composer-heading { align-items: baseline; }
   .composer-heading .small-text { max-width: 150px; }
+  .planner-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .planner-field select { min-height: 44px; }
+  .planner-row .field-hint { padding-bottom: 0; }
   .composer-controls { gap: 8px; }
   .checkbox-label { font-size: 12px; min-height: 44px; }
   .button-row { width: 100%; }
@@ -212,7 +222,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
   .task-detail { padding: 16px; }
   .connect-view { margin: 24px auto; }
   .connect-guide { margin-top: 32px; }
-  input, textarea { font-size: 16px; }
+  input, textarea, select { font-size: 16px; }
   .connect-form .button { width: 100%; }
   .detail-meta { gap: 6px 12px; }
 }

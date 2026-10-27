@@ -1,6 +1,35 @@
 # Changelog
 
-## 0.1.0 — Unreleased
+## 0.2.0 — 2026-10-27
+
+### Added
+
+- Optional OpenAI Responses planning with structured output, local tool/argument validation,
+  mandatory per-step approvals, bounded requests, and sanitized provider errors.
+- Dashboard planner selection, authenticated configuration metadata, per-task API selection,
+  and CLI `--planner` overrides. Local planning remains the default without credentials.
+- Durable planning records and execution checkpoints before attempts and after successful steps.
+- Explicit interrupted-run recovery through CLI and API, preserving history without replaying tools.
+- Portable browser runner with isolated database/provider configuration and Chromium verification in CI.
+- Regression coverage for AI/API/CLI approval flows, provider failures, interrupted tasks,
+  independent task execution, CORS, planner selection, and delayed dashboard metadata.
+
+### Fixed
+
+- A slow synchronous tool no longer holds a service-wide lock over unrelated task requests.
+- Invalid CORS hosts, ports, credentials, and paths are rejected; equivalent origins are normalized.
+- Storage checkpoint failures stop execution without entering the tool retry loop.
+- Removed unused alternative storage modules with an incompatible schema; existing task snapshots
+  continue to use `agent_engine.storage.repository` without a database migration.
+
+### Scope
+
+The local app supports one operator and registered synchronous tools. Recovery requires the
+operator to stop the worker and inspect possible side effects. AI provider access is configured
+by the operator; automated tests use HTTP mocks. Multi-user hosting and distributed workers
+remain outside this release.
+
+## 0.1.0 — 2026-10-26
 
 ### Added
 

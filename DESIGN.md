@@ -132,6 +132,12 @@ are at least 36px on desktop and 44px on phones.
   browser page requires reconnecting.
 - Preview saves a pending plan; Execute runs it. Approve advances one waiting step,
   then execution pauses again where another approval is required.
+- The task form uses a native Planner select for Local and optional AI planning. It
+  shows the configured model when available and keeps Local usable during setup or
+  metadata failures. AI mode explains that the goal and tool schemas go to the configured
+  provider and locks approval on for every step. Returning to Local restores its previous
+  approval choice. Planner options and selection are cleared on disconnect; delayed
+  metadata cannot change a newer connection or replace the operator's chosen mode.
 - Delayed responses cannot replace a newer task revision or show an error on another
   selected task. Refreshing saved tasks preserves an open mobile task form and its draft.
 - Keyboard focus follows the next approval action; when execution finishes, it moves

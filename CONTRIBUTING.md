@@ -38,6 +38,13 @@ and survive a saved approval resume. Put mandatory approval on the registry defi
 Plans reference prior steps
 with `{"$ref": step_id}`. Claim task revisions before resuming execution and handle stale
 updates without running a tool. Do not automatically retry a task after a process crash.
+Different tasks can call the same tool concurrently. Use thread-safe clients and protect
+shared mutable state inside the tool. Persisted attempts are not proof that an external
+side effect did or did not complete; recovery closes the interrupted task without replaying it.
+
+Provider tests must use controlled HTTP transports. Keep AI output validation and mandatory
+approval independent of the model's response; never write provider keys or raw error bodies
+to task history. The suite clears inherited AI configuration before each test.
 
 For dashboard changes, preserve the [design system](DESIGN.md), use real task data, and
 verify desktop, tablet, and phone layouts. Run both browser scripts using the isolated

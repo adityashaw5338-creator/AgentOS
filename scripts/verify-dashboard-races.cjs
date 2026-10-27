@@ -1,10 +1,7 @@
 /* Real-browser regressions for delayed responses and keyboard task actions.
    Uses the same isolated server/token/Playwright setup as verify-dashboard.cjs. */
 const assert = require('node:assert/strict');
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
-const url = process.env.AGENTOS_TEST_URL || 'http://127.0.0.1:8000';
-const token = process.env.AGENTOS_TEST_TOKEN;
-if (!token) throw new Error('Set AGENTOS_TEST_TOKEN for an isolated test server.');
+const { withBrowser } = require('./browser-support.cjs');
 
 function deferred() {
   let resolve;
@@ -16,12 +13,14 @@ async function settled(page) {
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
 }
 
-async function connect(page) {
+async function connect(page, url, token) {
   await page.goto(url);
   await page.locator('#access-token').fill(token);
   await page.locator('#connect-button').click();
   await page.locator('#workspace').waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.getElementById('task-list').getAttribute('aria-busy') === 'false');
+  await page.waitForFunction(() => !document.getElementById('refresh').disabled);
+  await page.waitForFunction(() => document.getElementById('planner').getAttribute('aria-busy') === 'false');
 }
 
 async function create(page, approval = false) {
@@ -128,19 +127,70 @@ async function mobileDraftRefresh(page) {
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
-(async () => {
-  const browser = await chromium.launch({ channel: 'msedge', headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  const errors = [];
-  page.on('pageerror', (error) => errors.push(error.message));
+async function plannerReconnect(page, token, staleError) {
+  if (await page.locator('#workspace').isVisible()) await page.locator('#disconnect').click();
+  const captured = deferred(), release = deferred(), delivered = deferred();
+  const fresh = { default: staleError ? 'openai' : 'local', openai_available: staleError, model: staleError ? 'new-session-model' : null, message: staleError ? null : 'The new session has no AI provider.' };
+  let requests = 0;
+  await page.route('**/api/planner', async (route) => {
+    if (++requests === 1) {
+      captured.resolve();
+      await release.promise;
+      await route.fulfill({
+        status: staleError ? 401 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify(staleError ? { detail: 'Old session request failed.' } : { default: 'openai', openai_available: true, model: 'old-session-model', message: null }),
+      });
+      delivered.resolve();
+    } else {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fresh) });
+    }
+  });
   try {
-    await connect(page);
+    await page.locator('#access-token').fill(token);
+    await page.locator('#connect-button').click();
+    await captured.promise;
+    await page.locator('#workspace').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('connect-button').disabled);
+    assert.equal(await page.locator('#planner').getAttribute('aria-busy'), 'true');
+    assert.equal(await page.locator('#run-button').isEnabled(), true, 'A delayed metadata request must not block local tasks');
+    await page.locator('#disconnect').click();
+    await page.locator('#access-token').fill(token);
+    await page.locator('#connect-button').click();
+    await page.locator('#workspace').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => document.getElementById('planner').getAttribute('aria-busy') === 'false');
+    release.resolve();
+    await delivered.promise;
+    await settled(page);
+    assert.equal(await page.locator('#planner').inputValue(), fresh.default, 'Old-session planner responses must not change the new session');
+    assert.equal(await page.locator('#planner-openai').isDisabled(), !fresh.openai_available);
+    assert.equal(await page.locator('#planner').getAttribute('aria-busy'), 'false');
+    assert.equal(await page.locator('#workspace').isVisible(), true, 'An old-session authentication failure must not disconnect the new session');
+    if (staleError) assert.match(await page.locator('#planner-openai').textContent(), /new-session-model/);
+  } finally {
+    release.resolve();
+    await page.unroute('**/api/planner');
+  }
+}
+
+async function verifyDashboardRaces({ url = process.env.AGENTOS_TEST_URL || 'http://127.0.0.1:8000', token = process.env.AGENTOS_TEST_TOKEN } = {}) {
+  if (!token) throw new Error('Set AGENTOS_TEST_TOKEN for an isolated test server.');
+  return withBrowser(async (browser) => {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await connect(page, url, token);
     await staleRefresh(page);
     await staleSelectionError(page);
     await keyboardApproval(page);
     await mobileDraftRefresh(page);
     await disconnectDuringRefresh(page);
+    await plannerReconnect(page, token, false);
+    await plannerReconnect(page, token, true);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ result: 'passed', checked: ['stale refresh', 'stale selection error', 'keyboard approvals', 'mobile draft refresh', 'disconnect during refresh'] }));
-  } finally { await browser.close(); }
-})().catch((error) => { console.error(error); process.exitCode = 1; });
+    console.log(JSON.stringify({ result: 'passed', checked: ['stale refresh', 'stale selection error', 'keyboard approvals', 'mobile draft refresh', 'disconnect during refresh', 'stale planner success after reconnect', 'stale planner failure after reconnect'] }));
+  });
+}
+
+module.exports = { verifyDashboardRaces };
+if (require.main === module) verifyDashboardRaces().catch((error) => { console.error(error); process.exitCode = 1; });
