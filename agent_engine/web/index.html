@@ -7,6 +7,7 @@
   <meta name="description" content="Run and inspect controlled AgentOS tool workflows.">
   <title>AgentOS · Local workspace</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -32,7 +33,7 @@
     <header class="topbar">
       <a class="mobile-brand" href="#tasks">AgentOS</a>
       <span class="topbar-scope">Local workspace <span class="separator">/</span> <span id="breadcrumb">Tasks</span></span>
-      <div class="topbar-actions"><span id="connection-label">Disconnected</span><button id="mobile-disconnect" class="text-button mobile-disconnect" type="button" hidden>Disconnect</button><button id="refresh" class="icon-button" type="button" aria-label="Refresh saved tasks" title="Refresh saved tasks" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg></button></div>
+      <div class="topbar-actions"><span id="connection-label">Disconnected</span><button id="mobile-disconnect" class="text-button mobile-disconnect" type="button" hidden>Disconnect</button><button id="refresh" class="icon-button" type="button" aria-label="Refresh saved tasks" title="Refresh saved tasks" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg></button><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Dark mode" aria-pressed="false"><svg class="theme-moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.7 11.1A7 7 0 0 1 8.9 3.3a7 7 0 1 0 7.8 7.8Z"/></svg><svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6 16 16M4 16l1.4-1.4M14.6 5.4 16 4"/></svg><span id="theme-label">Dark mode</span></button></div>
     </header>
     <main id="main" class="sheet" tabindex="-1">
       <section id="connect-view" class="connect-view" aria-labelledby="connect-heading">
@@ -41,6 +42,7 @@
           <h1 id="connect-heading">Connect to your engine</h1>
           <p>Enter the access token printed when you started AgentOS to open your local workspace.</p>
         </div>
+        <ol class="connect-flow" aria-label="How a task runs"><li><span>1</span>Plan</li><li><span>2</span>Validate</li><li><span>3</span>Execute</li></ol>
         <form id="connect-form" class="connect-form">
           <label for="access-token">Access token</label>
           <input id="access-token" name="token" type="password" autocomplete="off" spellcheck="false" required aria-describedby="token-hint connect-error">
@@ -70,7 +72,7 @@
               <div class="goal-label"><label for="goal">Task goal</label><span class="small-text shortcut-hint">Ctrl / ⌘ + Enter to run</span></div>
               <textarea id="goal" name="goal" rows="2" maxlength="4000" required spellcheck="false" placeholder="For example, calculate (2 + 3) * 4" aria-describedby="goal-hint composer-message"></textarea>
               <p id="planner-hint" class="field-hint planner-hint" role="status" hidden></p>
-              <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step before execution</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>
+              <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>
               <p id="composer-message" class="form-message" role="status" hidden></p>
             </form>
             <div id="composer-progress" class="activity-notice" role="status" hidden><span class="activity-spinner" aria-hidden="true"></span><div><strong id="progress-label"></strong><p id="progress-hint"></p></div></div>

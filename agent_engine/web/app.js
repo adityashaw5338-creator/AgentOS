@@ -8,7 +8,67 @@
   const statusNames = { planning: "Planning", pending: "Ready", running: "Running", completed: "Completed", failed: "Failed", waiting_for_approval: "Needs approval", cancelled: "Cancelled" };
   const cancellable = new Set(["pending", "planning", "waiting_for_approval"]);
   const pageSize = 25;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const motion = { version: 0, submit: null, navigation: null, detail: new Set(), view: new Set() };
+  let lastRenderedTask = null;
   let searchTimer;
+
+  function cancelMotion(group) {
+    const groups = group ? [motion[group]] : [motion.detail, motion.view];
+    groups.forEach((animations) => {
+      animations.forEach((animation) => animation.cancel());
+      animations.clear();
+    });
+  }
+
+  function invalidateMotion() {
+    motion.version += 1;
+    motion.submit = null;
+    motion.navigation = null;
+    cancelMotion();
+  }
+
+  function pointerMotion(event) {
+    return event?.isTrusted && event.detail > 0 && !reducedMotion.matches
+      ? { version: motion.version, epoch: session.epoch } : null;
+  }
+
+  function canAnimate(ticket) {
+    return ticket && ticket.version === motion.version && ticket.epoch === session.epoch && !reducedMotion.matches;
+  }
+
+  function playMotion(node, keyframes, { duration = 200, delay = 0, id = "agentos-detail" } = {}, group = "detail") {
+    if (!node?.animate) return;
+    const easing = getComputedStyle(document.documentElement).getPropertyValue("--ease-out").trim() || "cubic-bezier(0.23, 1, 0.32, 1)";
+    const animation = node.animate(keyframes, { duration, delay, easing, fill: "backwards" });
+    animation.id = id;
+    motion[group].add(animation);
+    const remove = () => motion[group].delete(animation);
+    animation.addEventListener("cancel", remove, { once: true });
+    animation.addEventListener("finish", () => { remove(); animation.cancel(); }, { once: true });
+  }
+
+  function taskSnapshot(task) {
+    return task ? { id: task.task_id, revision: task.revision, result: task.result, current: task.current_step, status: task.status } : null;
+  }
+
+  function animateDetail(ticket, previous, task) {
+    if (!canAnimate(ticket) || state.route !== "tasks" || !session.token) return;
+    const detail = $("task-detail");
+    const steps = [...detail.querySelectorAll(".step")];
+    if (previous?.id !== task.task_id) {
+      playMotion(detail.querySelector(".execution-summary"), [{ opacity: 0.55, transform: "translateY(4px)" }, { opacity: 1, transform: "translateY(0)" }], { id: "agentos-summary-enter" });
+      playMotion(detail.querySelector(".detail-result"), [{ opacity: 0.45, transform: "translateY(6px)" }, { opacity: 1, transform: "translateY(0)" }], { id: "agentos-result-enter" });
+      steps.forEach((step, index) => playMotion(step, [{ opacity: 0.2, transform: "translateY(8px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 190, delay: Math.min(index * 35, 70), id: "agentos-step-enter" }));
+      return;
+    }
+    if (task.revision <= previous.revision) return;
+    if (task.result !== previous.result) playMotion(detail.querySelector(".detail-result"), [{ opacity: 0.45, transform: "translateY(4px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 190, id: "agentos-result-update" });
+    if (task.current_step !== previous.current || task.status !== previous.status) {
+      const current = steps[Math.min(task.current_step, steps.length - 1)];
+      playMotion(current, [{ opacity: 0.55, transform: "translateY(4px)" }, { opacity: 1, transform: "translateY(0)" }], { duration: 190, id: "agentos-step-update" });
+    }
+  }
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -21,19 +81,20 @@
     return element("span", `status ${Object.hasOwn(statusNames, value) ? value : ""}`, statusNames[value] || value);
   }
 
-  function announce(id, message, error = false) {
+  function announce(id, message, error = false, quiet = false) {
     const target = $(id);
     target.textContent = message;
     target.hidden = !message;
     target.classList.toggle("error", error);
+    target.classList.toggle("sr-only", Boolean(message) && quiet && !error);
   }
 
-  function detailMessage(message, error = false) {
+  function detailMessage(message, error = false, quiet = false) {
     const target = $("detail-message");
     if (!target) return;
     target.textContent = message;
     target.hidden = !message;
-    target.className = error ? "detail-error" : "form-message";
+    target.className = error ? "detail-error" : quiet ? "form-message sr-only" : "form-message";
   }
 
   function readableDate(value) {
@@ -165,6 +226,10 @@
   }
 
   function route() {
+    const previous = state.route;
+    const intent = motion.navigation;
+    motion.navigation = null;
+    cancelMotion("view");
     state.route = location.hash === "#tools" ? "tools" : "tasks";
     $("tasks-view").hidden = state.route !== "tasks";
     $("tools-view").hidden = state.route !== "tools";
@@ -176,9 +241,17 @@
     });
     document.title = `AgentOS · ${state.route === "tools" ? "Tool registry" : "Tasks"}`;
     if (state.route !== "tasks") $("tasks-view").classList.remove("detail-visible");
+    if (previous !== state.route) {
+      cancelMotion("detail");
+      if (intent?.route === state.route && canAnimate(intent.ticket) && session.token) {
+        playMotion($(state.route === "tools" ? "tools-view" : "tasks-view"), [{ opacity: 0.7, transform: "translateY(4px)" }, { opacity: 1, transform: "translateY(0)" }], { id: "agentos-view-enter" }, "view");
+      }
+    }
   }
 
   function disconnect(message = "") {
+    invalidateMotion();
+    lastRenderedTask = null;
     session.token = "";
     session.epoch += 1;
     state.loadId += 1;
@@ -292,7 +365,7 @@
       const result = element("span", "task-row-result", task.result ?? "—");
       if (task.result !== null && task.result !== undefined) result.title = task.result;
       row.append(result);
-      row.addEventListener("click", () => selectTask(task.task_id));
+      row.addEventListener("click", (event) => selectTask(task.task_id, pointerMotion(event)));
       return row;
     });
     if (!nodes.length) {
@@ -321,7 +394,7 @@
     button.type = "button";
     button.dataset.action = action;
     button.disabled = state.busy;
-    button.addEventListener("click", () => mutateTask(action));
+    button.addEventListener("click", (event) => mutateTask(action, pointerMotion(event)));
     return button;
   }
 
@@ -347,18 +420,35 @@
     $("goal").focus();
   }
 
-  function renderDetail() {
+  function renderDetail(ticket = null) {
     const detail = $("task-detail");
+    const previous = lastRenderedTask;
+    cancelMotion("detail");
     const focusedAction = detail.contains(document.activeElement) ? document.activeElement.dataset.action : null;
     const headingFocused = document.activeElement.id === "detail-heading";
     const task = state.selected;
+    lastRenderedTask = taskSnapshot(task);
     if (!task) {
       const blank = element("div", "detail-placeholder");
       blank.append(element("h2", "", "Task details"), element("p", "", "Select a saved task to inspect its tool calls, results, and execution history."));
       blank.firstChild.id = "detail-heading";
-      const legend = element("div", "detail-legend");
-      ["Goal", "Tool plan", "Result"].forEach((word) => legend.append(element("span", "", word)));
-      blank.append(legend);
+      const guide = element("ol", "workflow-guide");
+      guide.setAttribute("aria-label", "How a task runs");
+      [
+        ["Plan goal", "Turn the request into an ordered tool plan."],
+        ["Validate tools", "Check arguments against each registered tool."],
+        ["Review approval", "Approve any step that needs your decision."],
+        ["Execute", "Run the steps and inspect their saved results."],
+      ].forEach(([label, description], index) => {
+        const item = element("li");
+        const number = element("span", "workflow-guide-index", String(index + 1));
+        number.setAttribute("aria-hidden", "true");
+        const content = element("div", "workflow-guide-content");
+        content.append(element("strong", "", label), element("p", "", description));
+        item.append(number, content);
+        guide.append(item);
+      });
+      blank.append(element("h3", "workflow-guide-heading", "How a task runs"), guide);
       detail.replaceChildren(blank);
       return;
     }
@@ -376,8 +466,29 @@
     title.id = "detail-heading";
     title.tabIndex = -1;
     const meta = element("div", "detail-meta");
-    meta.append(element("span", "", `Created ${readableDate(task.created_at)}`), element("span", "", `${task.steps.filter((step) => step.completed).length} of ${task.steps.length} steps complete`));
-    const nodes = [back, top, title, meta];
+    meta.append(element("span", "", `Created ${readableDate(task.created_at)}`));
+    const completed = task.steps.filter((step) => step.completed).length;
+    const current = task.steps[task.current_step];
+    const summaryText = task.status === "waiting_for_approval" ? `Step ${current?.step_id ?? task.current_step + 1} needs approval`
+      : task.status === "completed" ? "All steps completed"
+      : task.status === "pending" ? "Ready to execute"
+      : task.status === "planning" ? "Building the tool plan"
+      : task.status === "running" ? current ? `Running step ${current.step_id}` : "Execution in progress"
+      : task.status === "failed" ? task.steps.length ? "Execution stopped" : "Planning stopped"
+      : task.status === "cancelled" ? "Task cancelled" : statusNames[task.status] || task.status;
+    const summary = element("div", "execution-summary");
+    summary.dataset.status = task.status;
+    const summaryCopy = element("div", "execution-summary-copy");
+    summaryCopy.append(element("span", "execution-label", "Execution"), element("p", "execution-state", summaryText));
+    const progressText = task.steps.length ? `${completed} of ${task.steps.length} complete` : "No tool steps";
+    const progress = element("progress", "plan-progress");
+    progress.max = Math.max(1, task.steps.length);
+    progress.value = completed;
+    progress.hidden = task.steps.length === 0;
+    progress.setAttribute("aria-label", "Tool steps completed");
+    progress.setAttribute("aria-valuetext", progressText);
+    summary.append(summaryCopy, element("span", "plan-progress-meta", progressText), progress);
+    const nodes = [back, top, title, meta, summary];
     if (task.result !== null && task.result !== undefined) {
       const result = element("div", "detail-result");
       result.append(element("span", "", task.status === "completed" ? "Final result" : "Latest result"), element("strong", "", task.result));
@@ -385,7 +496,16 @@
     }
     if (task.error) nodes.push(element("p", "detail-error", task.error));
     if (task.status === "failed" && !task.steps.length) nodes.push(element("p", "recovery-hint", "Planning stopped before any tool ran. Edit the goal or use Local for arithmetic and explicit JSON plans."));
-    if (task.status === "waiting_for_approval") nodes.push(element("p", "approval-explanation", "Execution is paused. Review the next tool call, then approve that step or cancel the task."));
+    if (task.status === "waiting_for_approval") {
+      const approval = element("div", "approval-explanation");
+      approval.append(element("p", "", "Execution is paused. Review the next tool call, then approve that step or cancel the task."));
+      if (current) {
+        const call = element("div", "approval-call");
+        call.append(element("span", "approval-call-label", "Next tool"), element("code", "approval-tool", current.tool_name || "No tool assigned"), element("pre", "approval-args", JSON.stringify(current.tool_args)));
+        approval.append(call);
+      }
+      nodes.push(approval);
+    }
     const actions = element("div", "detail-actions");
     if (task.status === "pending") actions.append(actionButton("Execute plan", "execute", true));
     if (task.status === "waiting_for_approval") actions.append(actionButton("Approve next step", "approve", true));
@@ -413,12 +533,15 @@
     message.hidden = true;
     nodes.push(message);
     const plan = element("section", "detail-section");
-    plan.append(element("h3", "", "Tool plan"));
+    const planHeading = element("div", "detail-section-heading");
+    planHeading.append(element("h3", "", "Tool plan"), element("span", "step-count", `${task.steps.length} ${task.steps.length === 1 ? "step" : "steps"}`));
+    plan.append(planHeading);
     const steps = element("ol", "step-list");
     task.steps.forEach((step, index) => {
       const item = element("li", `step${step.completed ? " completed" : ""}`);
+      item.dataset.stepId = String(step.step_id);
       item.append(element("span", "step-index", step.step_id));
-      const content = element("div");
+      const content = element("div", "step-content");
       const name = element("div", "step-name");
       const waiting = index === task.current_step && task.status === "waiting_for_approval";
       item.classList.toggle("waiting", waiting);
@@ -443,6 +566,7 @@
     nodes.push(log);
     detail.replaceChildren(...nodes);
     if (!state.busy && (focusedAction || headingFocused)) restoreDetailFocus(focusedAction);
+    animateDetail(ticket, previous, task);
   }
 
   function restoreDetailFocus(action) {
@@ -452,6 +576,7 @@
 
   function updateSelected(task) {
     if (state.selected?.task_id !== task.task_id || state.selected.revision >= task.revision) return;
+    announce("composer-message", "");
     state.selected = task;
     state.tasks = state.tasks.map((item) => item.task_id === task.task_id ? task : item);
     renderDetail();
@@ -523,6 +648,7 @@
 
   async function refresh() {
     if (!session.token) return;
+    cancelMotion();
     const epoch = session.epoch;
     $("refresh").disabled = true;
     // Planner setup is optional; a slow metadata response must not hold the local
@@ -532,19 +658,20 @@
     if (session.epoch === epoch) $("refresh").disabled = false;
   }
 
-  async function selectTask(taskId) {
+  async function selectTask(taskId, ticket = null) {
     if (state.busy) return;
+    if (state.selected?.task_id !== taskId) announce("composer-message", "");
     const epoch = session.epoch;
     const requestId = ++state.detailLoadId;
     state.selected = state.tasks.find((task) => task.task_id === taskId) || null;
     renderList();
-    renderDetail();
     if (window.matchMedia("(max-width: 760px)").matches) {
       state.scrollTop = window.scrollY;
       $("tasks-view").classList.add("detail-visible");
       window.scrollTo({ top: 0 });
-      $("detail-heading")?.focus({ preventScroll: true });
     }
+    renderDetail(ticket);
+    if (window.matchMedia("(max-width: 760px)").matches) $("detail-heading")?.focus({ preventScroll: true });
     try {
       const task = await api(`/api/tasks/${encodeURIComponent(taskId)}`);
       if (!active(epoch) || state.selected?.task_id !== taskId || requestId !== state.detailLoadId) return;
@@ -572,7 +699,7 @@
     $("progress-hint").textContent = !creating ? "" : planning.mode === "openai" ? "Waiting for the provider. Every proposed step will need your approval." : "The engine is saving the plan and its execution state.";
   }
 
-  async function createTask(execute) {
+  async function createTask(execute, ticket = null) {
     if (state.busy || !session.token || !$("task-form").reportValidity()) return;
     const epoch = session.epoch;
     const goal = $("goal").value.trim();
@@ -594,23 +721,24 @@
       state.search = "";
       $("task-search").value = "";
       syncFilters();
-      renderDetail();
-      await Promise.allSettled([loadTasks(), loadStats()]);
-      if (!active(epoch)) return;
-      const message = task.status === "failed" ? task.error || "Task saved with an error. Review the details and choose Edit goal." : task.status === "waiting_for_approval" ? "Task saved and paused for your approval." : execute ? "Task completed. Its plan and result are saved below." : "Plan saved. Review the tool calls, then choose Execute plan.";
-      announce("composer-message", message, task.status === "failed");
       if (window.matchMedia("(max-width: 760px)").matches) {
         state.scrollTop = window.scrollY;
         $("tasks-view").classList.add("detail-visible");
         window.scrollTo({ top: 0 });
-        $("detail-heading")?.focus({ preventScroll: true });
       }
+      renderDetail(ticket);
+      if (window.matchMedia("(max-width: 760px)").matches) $("detail-heading")?.focus({ preventScroll: true });
+      await Promise.allSettled([loadTasks(), loadStats()]);
+      if (!active(epoch)) return;
+      const message = task.status === "failed" ? task.error || "Task saved with an error. Review the details and choose Edit goal." : task.status === "waiting_for_approval" ? "Task saved and paused for your approval." : execute ? "Task completed. Its plan and result are saved below." : "Plan saved. Review the tool calls, then choose Execute plan.";
+      announce("composer-message", message, task.status === "failed", task.status !== "failed");
     } catch (error) { if (active(epoch)) { handleAuth(error); announce("composer-message", error.message, true); } }
     finally { if (session.epoch === epoch) { state.busy = false; setComposerBusy(false); } }
   }
 
-  async function mutateTask(action) {
+  async function mutateTask(action, ticket = null) {
     if (state.busy || !state.selected || !session.token) return;
+    announce("composer-message", "");
     const task = state.selected;
     const epoch = session.epoch;
     const focusedAction = $("task-detail").contains(document.activeElement) ? document.activeElement.dataset.action : null;
@@ -624,9 +752,9 @@
       if (!active(epoch)) return;
       state.detailLoadId += 1;
       state.selected = updated;
-      renderDetail();
+      renderDetail(ticket);
       await Promise.allSettled([loadTasks(), loadStats()]);
-      if (active(epoch)) detailMessage(updated.status === "waiting_for_approval" ? "The next step is waiting for approval." : updated.status === "failed" ? "Execution stopped with an error. Review the history below." : updated.status === "cancelled" ? "Task cancelled. Its history is preserved." : "Execution completed and saved.", updated.status === "failed");
+      if (active(epoch)) detailMessage(updated.status === "waiting_for_approval" ? "The next step is waiting for approval." : updated.status === "failed" ? "Execution stopped with an error. Review the history below." : updated.status === "cancelled" ? "Task cancelled. Its history is preserved." : "Execution completed and saved.", updated.status === "failed", updated.status !== "failed");
     } catch (error) {
       if (!active(epoch)) return;
       handleAuth(error);
@@ -666,13 +794,29 @@
   document.addEventListener("keydown", clearPress);
   window.addEventListener("blur", clearPress);
 
+  // Capture the initiating click before async work. Keyboard input cancels active
+  // effects and invalidates pending pointer effects, so it always stays immediate.
+  document.addEventListener("keydown", invalidateMotion, true);
+  reducedMotion.addEventListener("change", invalidateMotion);
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#run-button")) {
+      const ticket = pointerMotion(event);
+      motion.submit = ticket;
+      // The browser's default submit follows click dispatch. Expire an unused
+      // ticket next task (invalid forms never submit), after that default action.
+      window.setTimeout(() => { if (motion.submit === ticket) motion.submit = null; }, 0);
+    }
+    const link = event.target.closest('a[href="#tasks"], a[href="#tools"]');
+    if (link) motion.navigation = { route: link.hash === "#tools" ? "tools" : "tasks", ticket: pointerMotion(event) };
+  }, true);
+
   $("connect-form").addEventListener("submit", connect);
   $("disconnect").addEventListener("click", () => disconnect());
   $("mobile-disconnect").addEventListener("click", () => disconnect());
   $("refresh").addEventListener("click", refresh);
   $("mobile-new-task").addEventListener("click", () => { state.mobileComposerOpen = $("task-composer").classList.contains("mobile-collapsed"); syncMobileComposer(); if (state.mobileComposerOpen) $("goal").focus(); });
-  $("task-form").addEventListener("submit", (event) => { event.preventDefault(); createTask(true); });
-  $("preview-button").addEventListener("click", () => createTask(false));
+  $("task-form").addEventListener("submit", (event) => { event.preventDefault(); const ticket = motion.submit; motion.submit = null; createTask(true, ticket); });
+  $("preview-button").addEventListener("click", (event) => createTask(false, pointerMotion(event)));
   $("planner").addEventListener("change", () => {
     planning.mode = $("planner").value === "openai" && planning.available ? "openai" : "local";
     planning.touched = true;

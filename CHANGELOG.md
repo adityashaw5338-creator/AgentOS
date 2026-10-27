@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Reworked the desktop workspace to put the active plan beside the composer, with larger results,
+  real step progress, and visible plan/step/result transitions that respect keyboard and reduced motion.
+- Show the pending tool and exact arguments before approval, and clear stale creation notices
+  when tasks advance. Added theme, motion, and approval-evidence browser regressions.
+- Added a persistent dark-mode toggle, system-theme defaults, and complete light/dark colors
+  for task states, inputs, results, and controls. Workspace tokens remain in tab memory.
 - Refined the dashboard task form, startup guide, registered-tool context, and current approval
   step, with visible planning feedback and reduced-motion-aware pointer press feedback.
 - Added failed-task editing and an explicit Local-planner recovery path that preserve other drafts
