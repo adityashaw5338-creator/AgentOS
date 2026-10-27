@@ -106,6 +106,16 @@ every AI-generated step requires approval. Approving or resuming a saved plan do
 provider again. Unknown tools, malformed plans, refusals, and incomplete responses become saved
 failures without executing tools. Provider credentials and error bodies are not written to history.
 
+Some compatible providers wrap JSON in a code block or return argument objects instead of an
+encoded string. AgentOS normalizes these equivalent forms before applying the same local checks.
+Errors distinguish malformed output, invalid tool calls, and goals the available tools cannot
+fulfill. A model can still produce an invalid plan, including for a supported goal.
+
+If planning fails, choose **Edit goal** on the saved task, or **Edit with Local** for arithmetic
+and explicit JSON plans. Review the goal and submit it yourself; editing never retries or runs
+tools automatically. An existing different draft is preserved. For built-in examples such as
+`add 12 and 8`, Local is the most reliable choice and needs no API calls.
+
 The built-in tools still perform arithmetic. AI planning does not add web browsing, shell access,
 or file editing. Register typed custom tools in Python to extend the available capabilities.
 The integration follows the official [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)

@@ -36,6 +36,7 @@
     </header>
     <main id="main" class="sheet" tabindex="-1">
       <section id="connect-view" class="connect-view" aria-labelledby="connect-heading">
+        <div class="connect-panel">
         <div class="connect-copy">
           <h1 id="connect-heading">Connect to your engine</h1>
           <p>Enter the access token printed when you started AgentOS to open your local workspace.</p>
@@ -47,33 +48,38 @@
           <p id="connect-error" class="form-error" role="alert" hidden></p>
           <button class="button primary" id="connect-button" type="submit">Connect workspace</button>
         </form>
+        </div>
         <div class="connect-guide">
-          <h2>Start the local server</h2>
-          <code>agentos serve</code>
-          <p>The terminal prints your workspace address and access token. Keep that terminal running while you work.</p>
+          <h2>Your local workspace</h2>
+          <ol class="connect-steps">
+            <li><strong>Start the engine</strong><p>On Windows, double-click <code>start.bat</code>. In a terminal, run <code>agentos serve</code>.</p></li>
+            <li><strong>Copy your access token</strong><p>Use the workspace token printed in the terminal. Keep the terminal running.</p></li>
+            <li><strong>Plan your first task</strong><p>Choose an example, inspect its tool calls, and run the validated plan.</p></li>
+          </ol>
         </div>
       </section>
       <div id="workspace" hidden>
         <section id="tasks-view" aria-labelledby="tasks-heading">
-          <div class="page-heading"><div><h1 id="tasks-heading">Tasks</h1><p>Turn a goal into a tool plan. Keep every step in view.</p></div><span id="freshness" class="freshness"></span></div>
-          <button id="mobile-new-task" class="button secondary mobile-compose-toggle" type="button" aria-expanded="true" aria-controls="task-composer">Hide task form</button>
+          <div class="page-heading"><div><h1 id="tasks-heading">Tasks</h1><p>Turn a goal into a tool plan. Keep every step in view.</p></div><button id="mobile-new-task" class="button secondary mobile-compose-toggle" type="button" aria-expanded="true" aria-controls="task-composer">Hide task form</button><span id="freshness" class="freshness"></span></div>
           <section id="task-composer" class="composer" aria-labelledby="composer-heading">
             <form id="task-form">
-              <div class="composer-heading"><h2 id="composer-heading">New task</h2><span id="composer-scope" class="small-text">Arithmetic or a structured plan</span></div>
-              <div class="planner-row">
+              <div class="composer-heading">
+                <div><h2 id="composer-heading">New task</h2><p id="composer-scope" class="small-text">Arithmetic or a structured plan</p></div>
                 <div class="planner-field"><label for="planner">Planner</label><select id="planner" name="planner" aria-describedby="planner-hint" aria-busy="false"><option value="local">Local</option><option id="planner-openai" value="openai" disabled>AI</option></select></div>
-                <p id="planner-hint" class="field-hint" role="status" hidden></p>
               </div>
-              <label class="sr-only" for="goal">Task goal</label>
+              <div class="goal-label"><label for="goal">Task goal</label><span class="small-text shortcut-hint">Ctrl / ⌘ + Enter to run</span></div>
               <textarea id="goal" name="goal" rows="2" maxlength="4000" required spellcheck="false" placeholder="For example, calculate (2 + 3) * 4" aria-describedby="goal-hint composer-message"></textarea>
+              <p id="planner-hint" class="field-hint planner-hint" role="status" hidden></p>
               <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step before execution</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>
               <p id="composer-message" class="form-message" role="status" hidden></p>
             </form>
+            <div id="composer-progress" class="activity-notice" role="status" hidden><span class="activity-spinner" aria-hidden="true"></span><div><strong id="progress-label"></strong><p id="progress-hint"></p></div></div>
             <div class="example-row" id="goal-hint"><span>Try a goal</span><button class="example-button" type="button" data-example="add 12 and 8">add 12 and 8</button><button class="example-button" type="button" data-example="calculate (2 + 3) * 4">calculate (2 + 3) * 4</button><button class="example-button" type="button" data-example="subtract 4 from 19">subtract 4 from 19</button></div>
+            <div class="capability-row"><span>Available tools</span><span id="registered-tools"></span><a href="#tools">View schemas</a></div>
           </section>
           <div class="work-area">
             <section id="task-list-section" class="task-list-section" aria-labelledby="history-heading">
-              <div class="section-heading"><h2 id="history-heading">Saved tasks</h2><span id="task-total" class="small-text">Loading…</span></div>
+              <div class="section-heading"><h2 id="history-heading">Saved tasks</h2><div class="list-summary"><span id="task-total" class="small-text">Loading…</span><span id="list-loading" class="small-text" role="status" hidden>Loading saved tasks…</span></div></div>
               <div class="filter-tabs" role="group" aria-label="Filter tasks by status"><button class="filter-tab selected" type="button" data-filter="" aria-pressed="true">All</button><button class="filter-tab" type="button" data-filter="waiting_for_approval" aria-pressed="false">Needs approval <span id="approval-count"></span></button><button class="filter-tab" type="button" data-filter="completed" aria-pressed="false">Completed</button><button class="filter-tab" type="button" data-filter="failed" aria-pressed="false">Failed</button></div>
               <div class="list-toolbar"><label class="sr-only" for="task-search">Search task goals</label><input id="task-search" type="search" placeholder="Search task goals…" maxlength="200"><span class="small-text">Newest first</span></div>
               <div id="list-error" class="block-error" role="alert" hidden></div>
