@@ -142,6 +142,155 @@ async function plannerModes(browser, url, token) {
   }
 }
 
+async function dashboardPolish(browser, url, token) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  const submissions = [];
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((done) => { resolve = done; });
+    return { promise, resolve };
+  };
+  let flight = { captured: deferred(), release: deferred() };
+  const settled = () => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const openComposer = async () => {
+    if (await page.locator('.mobile-back').isVisible()) await page.locator('.mobile-back').click();
+    if (!await page.locator('#goal').isVisible()) await page.locator('#mobile-new-task').click();
+  };
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/tasks') submissions.push(request.postDataJSON());
+  });
+  try {
+    await page.route('**/api/planner', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ default: 'local', openai_available: true, model: 'browser-test-model', message: null, timeout_seconds: 20 }),
+    }));
+    await page.route('**/api/tasks', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      const body = route.request().postDataJSON();
+      if (body.planner !== 'openai') return route.continue();
+      const pending = flight;
+      // Persist a real unsupported local plan to exercise the AI failure UI without a provider.
+      const response = await route.fetch({ postData: JSON.stringify({ ...body, planner: 'local' }) });
+      pending.captured.resolve();
+      await pending.release.promise;
+      await route.fulfill({ response });
+    });
+    await connect(page, url, token);
+    const catalogResponse = await page.request.get(`${url}/api/tools`, { headers: { Authorization: `Bearer ${token}` } });
+    const catalog = await catalogResponse.json();
+    assert.deepEqual((await page.locator('#registered-tools code').allTextContents()).sort(), catalog.tools.map((tool) => tool.name).sort(), 'Composer capabilities must come from the actual registry');
+    await openComposer();
+    await page.locator('#require-approval').uncheck();
+    await page.locator('#planner').selectOption('openai');
+    const unsupported = 'Please work out seven plus three, then double it.';
+    await page.locator('#goal').fill(unsupported);
+    const created = page.waitForResponse((response) => response.url().endsWith('/api/tasks') && response.request().method() === 'POST');
+    await page.locator('#run-button').click();
+    await flight.captured.promise;
+    assert.equal(await page.locator('#composer-progress').isVisible(), true, 'A slow creation request must show progress');
+    assert.equal(await page.locator('#composer-progress').getAttribute('role'), 'status');
+    assert.match(await page.locator('#composer-progress').textContent(), /planning|AI|tool/i);
+    for (const control of ['#run-button', '#preview-button', '#planner', '#goal']) assert.equal(await page.locator(control).isDisabled(), true, `${control} must be disabled during creation`);
+    await capture(page, 390, 'polish-planning-mobile');
+    flight.release.resolve();
+    const failed = await (await created).json();
+    assert.equal(failed.status, 'failed');
+    assert.equal(failed.steps.length, 0);
+    await page.waitForFunction(() => !document.getElementById('run-button').disabled);
+    assert.equal(await page.locator('#composer-progress').evaluate((node) => node.hidden), true);
+    assert.equal((await page.locator('#composer-progress').textContent()).trim(), '');
+    assert.equal(await page.locator('[data-action="edit-local"]').isVisible(), true);
+    await capture(page, 390, 'polish-failed-mobile');
+
+    const beforeRecovery = submissions.length;
+    await page.locator('[data-action="edit"]').click();
+    assert.equal(await page.locator('#goal').isVisible(), true, 'Edit goal opens the mobile composer');
+    assert.equal(await page.locator('#goal').inputValue(), unsupported);
+    assert.equal(await page.locator('#planner').inputValue(), 'openai', 'Edit goal preserves the selected planner');
+    assert.equal(submissions.length, beforeRecovery, 'Editing a failed task must not submit it');
+    const draft = 'add 90 and 10';
+    await page.locator('#goal').fill(draft);
+    await page.locator(`[data-task-id="${failed.task_id}"]`).click();
+    await page.locator('[data-action="edit-local"]').click();
+    assert.equal(await page.locator('#goal').isVisible(), true);
+    assert.equal(await page.locator('#goal').inputValue(), draft, 'Recovery must preserve a different draft');
+    assert.equal(await page.locator('#planner').inputValue(), 'openai', 'A draft conflict must preserve its planner');
+    assert.match(await page.locator('#composer-message').textContent(), /clear.*draft|draft.*clear/i);
+    assert.equal(submissions.length, beforeRecovery);
+    await capture(page, 390, 'polish-draft-conflict-mobile');
+    await page.locator('#goal').fill('');
+    await page.locator(`[data-task-id="${failed.task_id}"]`).click();
+    await page.locator('[data-action="edit-local"]').click();
+    assert.equal(await page.locator('#goal').inputValue(), unsupported);
+    assert.equal(await page.locator('#planner').inputValue(), 'local');
+    assert.equal(await page.locator('#require-approval').isChecked(), false);
+    assert.equal(submissions.length, beforeRecovery, 'Use local only changes the draft; it must never run it');
+    const recovered = await create(page, 'calculate (7 + 3) * 2');
+    assert.equal(recovered.status, 'completed');
+    assert.equal(Number(recovered.result), 20);
+    assert.equal(submissions.at(-1).planner, 'local');
+    await capture(page, 390, 'polish-recovered-mobile');
+
+    await openComposer();
+    await page.locator('#planner').selectOption('openai');
+    await page.locator('#goal').fill('Please plan a different unsupported workflow.');
+    flight = { captured: deferred(), release: deferred() };
+    const delayed = page.waitForResponse((response) => response.url().endsWith('/api/tasks') && response.request().method() === 'POST');
+    await page.locator('#run-button').click();
+    await flight.captured.promise;
+    assert.equal(await page.locator('#composer-progress').isVisible(), true);
+    await page.locator('#mobile-disconnect').click();
+    assert.equal(await page.locator('#composer-progress').evaluate((node) => node.hidden), true);
+    assert.equal((await page.locator('#composer-progress').textContent()).trim(), '');
+    flight.release.resolve();
+    await delayed;
+    await settled();
+    assert.equal(await page.locator('#workspace').isVisible(), false, 'A late creation response must not reconnect the workspace');
+    assert.equal(await page.locator('.task-row').count(), 0);
+    assert.equal((await page.locator('#composer-progress').textContent()).trim(), '');
+
+    await connect(page, url, token);
+    await openComposer();
+    await page.locator('#goal').fill('');
+    const beforePress = submissions.length;
+    const button = page.locator('#preview-button');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await button.focus();
+    await page.keyboard.down('Space');
+    assert.equal(await button.evaluate((node) => node.classList.contains('is-pressed')), false, 'Keyboard input must not trigger pointer press feedback');
+    assert.equal(await button.evaluate((node) => getComputedStyle(node).transform), 'none');
+    await page.keyboard.up('Space');
+    const press = async () => {
+      const box = await button.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForFunction(() => document.getElementById('preview-button').classList.contains('is-pressed'));
+    };
+    const release = async () => {
+      await page.mouse.move(0, 0);
+      await page.mouse.up();
+      await page.waitForFunction(() => !document.getElementById('preview-button').classList.contains('is-pressed'));
+    };
+    await press();
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('preview-button')).transform !== 'none');
+    await release();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // The preceding release can still be mid-transition when CDP changes the preference.
+    // Wait for that rendered state to settle before testing a new reduced-motion press.
+    await page.waitForFunction(() => matchMedia('(prefers-reduced-motion: reduce)').matches && getComputedStyle(document.getElementById('preview-button')).transform === 'none');
+    await press();
+    assert.equal(await button.evaluate((node) => getComputedStyle(node).transform), 'none', 'Reduced motion must disable the press transform');
+    await release();
+    assert.equal(submissions.length, beforePress, 'Press-feedback checks must not submit an empty goal');
+    assert.deepEqual(errors, []);
+  } finally {
+    flight.release.resolve();
+    await page.close();
+  }
+}
+
 async function verifyDashboard({ url = process.env.AGENTOS_TEST_URL || 'http://127.0.0.1:8000', token = process.env.AGENTOS_TEST_TOKEN } = {}) {
   if (!token) throw new Error('Set AGENTOS_TEST_TOKEN for an isolated test server before running.');
   return withBrowser(async (browser) => {
@@ -158,6 +307,14 @@ async function verifyDashboard({ url = process.env.AGENTOS_TEST_URL || 'http://1
     assert.equal(await page.locator('#planner').inputValue(), 'local');
     assert.equal(await page.locator('#planner-openai').isDisabled(), true, 'The isolated runner must not enable a real AI provider');
     assert.equal(await page.locator('#planner-hint').isVisible(), true, 'Unavailable AI must include configuration guidance');
+    if (await page.locator('.task-row').count() === 0) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await page.locator('#goal').isVisible(), true, 'The first-run composer opens on mobile');
+      await page.locator('#mobile-new-task').click();
+      assert.equal(await page.locator('#goal').isVisible(), false, 'Even an empty workspace can hide the mobile composer');
+      await page.locator('#mobile-new-task').click();
+      assert.equal(await page.locator('#goal').isVisible(), true);
+    }
     await capture(page, 1440, 'desktop-start');
 
     let task = await create(page, 'calculate (2 + 3) * 4');
@@ -186,6 +343,8 @@ async function verifyDashboard({ url = process.env.AGENTOS_TEST_URL || 'http://1
     task = await create(page, 'divide 1 by 0');
     assert.equal(task.status, 'failed');
     assert.match(await page.locator('.detail-error').first().textContent(), /zero/i);
+    assert.equal(await page.locator('[data-action="edit"]').count(), 1);
+    assert.equal(await page.locator('[data-action="edit-local"]').count(), 0, 'A failure during tool execution must not offer a planner fallback');
 
     await page.getByRole('button', { name: 'Failed', exact: true }).click();
     await page.waitForFunction(() => document.getElementById('task-list').getAttribute('aria-busy') === 'false');
@@ -228,7 +387,8 @@ async function verifyDashboard({ url = process.env.AGENTOS_TEST_URL || 'http://1
     assert.equal(await page.locator('#access-token').inputValue(), '');
     assert.deepEqual(errors, []);
     await plannerModes(browser, url, token);
-    console.log(JSON.stringify({ result: 'passed', checked: ['connection and rejected token', 'execution and plan preview', 'approval and cancellation', 'failed tasks and filtering', 'tool schema disclosure', 'desktop/tablet/mobile layout', 'long text and safe rendering', 'token memory and disconnect', 'local planner fallback and AI approval controls'], screenshots: out }, null, 2));
+    await dashboardPolish(browser, url, token);
+    console.log(JSON.stringify({ result: 'passed', checked: ['connection and rejected token', 'execution and plan preview', 'approval and cancellation', 'failed tasks and filtering', 'tool schema disclosure', 'desktop/tablet/mobile layout', 'long text and safe rendering', 'token memory and disconnect', 'local planner fallback and AI approval controls', 'planning progress and safe mobile failure recovery', 'draft preservation and local retry', 'pointer feedback and reduced motion'], screenshots: out }, null, 2));
   });
 }
 

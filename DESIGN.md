@@ -15,6 +15,16 @@ colors:
   border: "#e8eaec"
   rule: "#f0f1f2"
   control: "#cdced1"
+  hover: "#303335"
+  selection: "#d5e9ee"
+  positiveBackground: "#dcfae5"
+  positiveInk: "#04250e"
+  negativeBackground: "#ffedea"
+  negativeInk: "#831c1e"
+  warningBackground: "#fffbeb"
+  warningBorder: "#f0dfb4"
+  runningBackground: "#e3f1f4"
+  neutralInk: "#353736"
 typography:
   title:
     fontFamily: "IBM Plex Sans, system-ui, sans-serif"
@@ -99,7 +109,9 @@ controls follow familiar interface patterns.
 
 ## Typography
 
-Title 22px/600; section heading 16px/600; body 14px/400; metadata and code 12px.
+Title 22px/600; section heading 16px/600; body 14px/400; compact controls, step descriptions,
+and logs 13px; metadata and code 12px; secondary state labels and task IDs 11px.
+The wordmark uses 20px on desktop and 17px on phones; task results use 24px/400.
 Table figures are tabular and results are right-aligned. Touch inputs use 16px text
 to avoid browser zoom.
 
@@ -125,6 +137,10 @@ are at least 36px on desktop and 44px on phones.
 - Tasks: composer, filtered saved-task list, and selected task detail with plan and log.
 - Tool registry: actual registered tools with disclosed Pydantic JSON schemas.
 - Connect: token form and the real local server command.
+- Connect pairs the token form with a numbered startup guide, including the Windows launcher;
+  the guide stacks below the form on phones.
+- The composer groups goal entry with a compact native planner selector. Its available-tool
+  names come directly from the current registry, with a link to their argument schemas.
 - Phones: navigation becomes a top row. Task selection opens the detail as one region;
   Back restores the list and its scroll position. No page-wide horizontal scrolling.
 - Authentication tokens remain only in tab memory. Disconnect clears loaded tasks,
@@ -145,8 +161,27 @@ are at least 36px on desktop and 44px on phones.
 - Empty, filtered-empty, offline, rejected-token, failed-task, loading, and stale-revision
   states each provide a concrete recovery action. History starts empty, with no seeded
   demonstration tasks or invented statistics.
-- Motion is limited to 120ms button/navigation feedback and disabled under reduced
-  motion. Nothing performs an entrance.
+- Failed tasks offer Edit goal; zero-step planning failures also offer Edit with Local.
+  These actions open the composer without submitting, keep saved history, and preserve a different
+  draft already in the form. AI remains selected unless the operator explicitly chooses Local.
+- The step waiting for approval has an amber number and state label; the approval explanation
+  groups the next decision above its actions. It also exposes `aria-current="step"`.
+- Planning shows an indeterminate activity indicator and an explicit provider-wait message.
+  Its live region sits outside the busy form. History loading uses the heading's count space,
+  keeping existing task rows stationary. Disconnect clears all activity state.
+- Motion conveys press feedback and pending work. Pointer presses scale buttons to 0.97 over
+  160ms with `cubic-bezier(0.23, 1, 0.32, 1)`; transitions retarget on interruption. A 1s linear
+  rotation indicates an active creation request, never a completion percentage. Reduced motion
+  removes transforms and rotation while keeping static pressed styling and written status.
+  Hover feedback requires a fine pointer with hover. Keyboard actions, navigation, and list
+  selection remain immediate. Nothing performs an entrance; no animation library is required.
+
+### Refinement direction
+
+The Framed sheet app direction (seed 1046047228) preserves the existing palette and Plex type.
+The question remains: what happened in this task, and what needs a decision next? The cool frame
+and connected tool-step rail carry the product identity. Production data always comes from the
+engine; browser fixtures live only in isolated verification databases.
 
 ### Assets
 

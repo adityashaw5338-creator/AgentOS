@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Refined the dashboard task form, startup guide, registered-tool context, and current approval
+  step, with visible planning feedback and reduced-motion-aware pointer press feedback.
+- Added failed-task editing and an explicit Local-planner recovery path that preserve other drafts
+  and never submit automatically; fixed the first-run mobile task-form toggle.
+- Normalized equivalent AI JSON/argument formats while retaining tool validation and mandatory
+  approvals. Planning errors now distinguish malformed output, invalid calls, and unsupported goals.
 - Added a Windows `start.bat` launcher with first-run dependency setup, private `.env`
   loading, browser opening after server startup, and clear port-conflict errors.
 

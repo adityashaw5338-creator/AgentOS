@@ -90,6 +90,7 @@ def test_responses_request_and_local_approval_contract(settings):
     assert "tools" not in body  # The provider proposes data; it cannot call tools.
     assert settings.api_key not in request.content.decode()
     assert "multiply" in body["instructions"]
+    assert '"tool_args_json":"{\\"a\\":2,\\"b\\":3}"' in body["instructions"]
     assert all(value > 0 for value in request.extensions["timeout"].values())
     assert state.status == AgentStatus.PENDING
     assert all(item.requires_approval and not item.approved for item in state.steps)
@@ -245,7 +246,6 @@ def test_configurable_timeout_and_model_are_loaded_from_environment(monkeypatch)
 @pytest.mark.parametrize(
     "bad_plan",
     [
-        {"steps": []},
         {"steps": [step()] * 33},
         {"steps": [step()], "approved": True},
         {"steps": [step("not_a_tool")]},
@@ -266,16 +266,149 @@ def test_configurable_timeout_and_model_are_loaded_from_environment(monkeypatch)
         {"steps": [step(description="")]},
         {"steps": [step(description=None)]},
         {"steps": [step(description="x" * 4001)]},
-        {"steps": [step(tool_args_json={"a": 1, "b": 2})]},
+        {"steps": [step(tool_args={"a": 1, "b": 2})]},
     ],
 )
 def test_untrusted_model_plans_are_rejected_before_any_state_is_installed(settings, bad_plan):
     state = AgentState(goal="User goal")
-    with pytest.raises(ValueError, match="not a valid plan"):
+    with pytest.raises(ValueError, match="AI "):
         planner(settings, response(bad_plan)).create_plan(state, build_registry())
     assert state.steps == []
     assert state.goal == "User goal"
     assert state.execution_log == []
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"tool_args_json": {"a": 2, "b": 3}},
+        {"tool_args": {"a": 2, "b": 3}},
+    ],
+)
+def test_equivalent_argument_objects_are_validated_and_still_require_approval(settings, arguments):
+    payload = response({"steps": [{"tool_name": "add", **arguments}]})
+    registry = build_registry()
+    state = planner(settings, payload).create_plan(AgentState(goal="add 2 and 3"), registry)
+    assert state.steps[0].tool_args == {"a": 2.0, "b": 3.0}
+    assert state.steps[0].description == "Run add."
+    assert state.steps[0].requires_approval
+    execute_plan(state, registry)
+    assert state.status == AgentStatus.WAITING_FOR_APPROVAL
+    assert state.steps[0].attempts == 0
+    approve_current_step(state)
+    execute_plan(state, registry)
+    assert state.result == "5.0"
+
+
+@pytest.mark.parametrize("language", ["", "json", "JSON"])
+def test_single_json_fence_is_unwrapped_without_changing_the_validated_plan(settings, language):
+    payload = response()
+    text = payload["output"][0]["content"][0]["text"]
+    payload["output"][0]["content"][0]["text"] = f"  ```{language}\r\n{text}\r\n```  "
+    state = planner(settings, payload).create_plan(AgentState(goal="add 2 and 3"), build_registry())
+    assert len(state.steps) == 1
+    assert state.steps[0].tool_name == "add"
+    assert state.steps[0].requires_approval
+    assert not state.steps[0].approved
+
+
+def test_fenced_object_arguments_keep_typed_references_and_each_approval(settings):
+    payload = response(
+        {
+            "steps": [
+                {"tool_name": "add", "tool_args": {"a": 2, "b": 3}},
+                {"tool_name": "multiply", "tool_args": {"a": {"$ref": 1}, "b": 4}},
+            ]
+        }
+    )
+    text = payload["output"][0]["content"][0]["text"]
+    payload["output"][0]["content"][0]["text"] = f"```json\n{text}\n```"
+    registry = build_registry()
+    state = planner(settings, payload).create_plan(AgentState(goal="sum then multiply"), registry)
+    execute_plan(state, registry)
+    for expected in ("5.0", "20.0"):
+        assert state.status == AgentStatus.WAITING_FOR_APPROVAL
+        approve_current_step(state)
+        execute_plan(state, registry)
+        assert state.result == expected
+    assert state.status == AgentStatus.COMPLETED
+
+
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        lambda text: f"Here is your plan:\n```json\n{text}\n```",
+        lambda text: f"```json\n{text}\n```\nRun it now.",
+        lambda text: f"```json\n{text}\n```\n```json\n{text}\n```",
+        lambda text: f"```javascript\n{text}\n```",
+        lambda text: f"```json\n{text}",
+        lambda text: '{"steps": [], "steps": []}',
+    ],
+)
+def test_prose_multiple_fences_and_duplicate_fields_are_not_repaired(settings, wrap):
+    payload = response()
+    payload["output"][0]["content"][0]["text"] = wrap(payload["output"][0]["content"][0]["text"])
+    with pytest.raises(ValueError, match="malformed JSON plan"):
+        planner(settings, payload).create_plan(AgentState(goal="add 2 and 3"), build_registry())
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"approved": True},
+        {"completed": True},
+        {"requires_approval": False},
+        {"tool_name": "unregistered_tool"},
+        {"tool_args": {"a": True, "b": 3}},
+        {"tool_args": {"a": "2", "b": "3"}},
+        {"tool_args": {"a": {"$ref": 1}, "b": 3}},
+        {"tool_args": {"a": 2, "b": 3, "extra": 1}},
+        {"tool_args_json": '{"a":2,"b":3}'},
+    ],
+)
+def test_normalized_output_never_bypasses_tool_or_state_validation(settings, change):
+    raw = {"tool_name": "add", "tool_args": {"a": 2, "b": 3}, **change}
+    payload = response({"steps": [raw]})
+    text = payload["output"][0]["content"][0]["text"]
+    payload["output"][0]["content"][0]["text"] = f"```json\n{text}\n```"
+    state = AgentState(goal="add 2 and 3")
+    with pytest.raises(ValueError, match="invalid tool names, arguments, or result references"):
+        planner(settings, payload).create_plan(state, build_registry())
+    assert not state.steps
+    assert state.result is None
+
+
+def test_empty_plan_is_a_capability_message_not_a_format_error(settings):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=response({"steps": []}))
+
+    state = AgentState(goal="A task the configured tools cannot perform")
+    with pytest.raises(ValueError, match="could not match this goal") as error:
+        planner(settings, handler=handler).create_plan(state, build_registry())
+    assert "Available tools: add, divide, multiply, power, subtract" in str(error.value)
+    assert "malformed" not in str(error.value)
+    assert len(calls) == 1
+    assert not state.steps
+    assert not state.execution_log
+
+
+@pytest.mark.parametrize(
+    "text, message",
+    [
+        ("raw private body test-secret-never-log", "malformed JSON plan"),
+        ('{"steps": [], "private": "test-secret-never-log"}', "unexpected plan format"),
+        ('{"steps":[{"tool_name":"test-secret-never-log","tool_args":{}}]}', "invalid tool names"),
+    ],
+)
+def test_plan_diagnostics_do_not_echo_private_provider_content(settings, text, message):
+    payload = response()
+    payload["output"][0]["content"][0]["text"] = text
+    with pytest.raises(ValueError, match=message) as error:
+        planner(settings, payload).create_plan(AgentState(goal="sum"), build_registry())
+    assert settings.api_key not in str(error.value)
 
 
 @pytest.mark.parametrize("status", [301, 307, 400, 401, 403, 429, 500, 503])

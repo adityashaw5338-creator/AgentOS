@@ -3,7 +3,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const session = { token: "", epoch: 0 };
-  const state = { tools: [], tasks: [], total: 0, selected: null, filter: "", search: "", route: "tasks", loadId: 0, detailLoadId: 0, busy: false, scrollTop: 0, mobileComposerOpen: false };
+  const state = { tools: [], tasks: [], total: 0, selected: null, filter: "", search: "", route: "tasks", loadId: 0, detailLoadId: 0, busy: false, scrollTop: 0, mobileComposerOpen: null };
   const planning = { mode: "local", available: false, model: "", message: "", defaultInvalid: false, loaded: false, touched: false, loadId: 0, localApproval: false, timeoutMs: 30000 };
   const statusNames = { planning: "Planning", pending: "Ready", running: "Running", completed: "Completed", failed: "Failed", waiting_for_approval: "Needs approval", cancelled: "Cancelled" };
   const cancellable = new Set(["pending", "planning", "waiting_for_approval"]);
@@ -191,8 +191,10 @@
     state.busy = false;
     $("task-list").replaceChildren();
     $("tool-list").replaceChildren();
+    $("registered-tools").replaceChildren();
     $("task-detail").replaceChildren();
     $("task-list").setAttribute("aria-busy", "false");
+    $("list-loading").hidden = true;
     $("load-more").hidden = true;
     $("load-more").disabled = false;
     $("refresh").disabled = false;
@@ -216,7 +218,7 @@
     $("task-search").value = "";
     state.search = "";
     state.filter = "";
-    state.mobileComposerOpen = false;
+    state.mobileComposerOpen = null;
     resetPlanner();
     syncFilters();
     announce("connect-error", message, Boolean(message));
@@ -260,6 +262,8 @@
 
   function renderTools() {
     $("tool-total").textContent = `${state.tools.length} registered ${state.tools.length === 1 ? "tool" : "tools"}`;
+    $("registered-tools").replaceChildren(...state.tools.map((tool) => element("code", "", tool.name)));
+    if (!state.tools.length) $("registered-tools").textContent = "None registered";
     const nodes = state.tools.map((tool) => {
       const item = element("article", "tool-item");
       const heading = element("div", "tool-summary");
@@ -306,7 +310,7 @@
   }
 
   function syncMobileComposer() {
-    const open = state.mobileComposerOpen || state.total === 0;
+    const open = state.mobileComposerOpen ?? state.total === 0;
     $("task-composer").classList.toggle("mobile-collapsed", !open);
     $("mobile-new-task").setAttribute("aria-expanded", String(open));
     $("mobile-new-task").textContent = open ? "Hide task form" : "New task";
@@ -319,6 +323,28 @@
     button.disabled = state.busy;
     button.addEventListener("click", () => mutateTask(action));
     return button;
+  }
+
+  function editGoal(task, local = false) {
+    if (state.busy || !session.token) return;
+    const draft = $("goal").value.trim();
+    const conflict = draft && draft !== task.goal.trim();
+    if (!conflict) {
+      $("goal").value = task.goal;
+      if (local) {
+        planning.mode = "local";
+        planning.touched = true;
+        renderPlanner();
+      }
+    }
+    state.mobileComposerOpen = true;
+    $("tasks-view").classList.remove("detail-visible");
+    syncMobileComposer();
+    announce("composer-message", conflict
+      ? "Your current draft is kept. Clear it before choosing Edit goal on this saved task."
+      : local ? "Local planner selected. Review this goal, then preview or run it."
+      : "Edit this goal, then preview or run a new task. The saved history is kept.");
+    $("goal").focus();
   }
 
   function renderDetail() {
@@ -358,11 +384,28 @@
       nodes.push(result);
     }
     if (task.error) nodes.push(element("p", "detail-error", task.error));
+    if (task.status === "failed" && !task.steps.length) nodes.push(element("p", "recovery-hint", "Planning stopped before any tool ran. Edit the goal or use Local for arithmetic and explicit JSON plans."));
     if (task.status === "waiting_for_approval") nodes.push(element("p", "approval-explanation", "Execution is paused. Review the next tool call, then approve that step or cancel the task."));
     const actions = element("div", "detail-actions");
     if (task.status === "pending") actions.append(actionButton("Execute plan", "execute", true));
     if (task.status === "waiting_for_approval") actions.append(actionButton("Approve next step", "approve", true));
     if (cancellable.has(task.status)) actions.append(actionButton("Cancel task", "cancel"));
+    if (task.status === "failed") {
+      const edit = element("button", "button secondary", "Edit goal");
+      edit.type = "button";
+      edit.dataset.action = "edit";
+      edit.disabled = state.busy;
+      edit.addEventListener("click", () => editGoal(task));
+      actions.append(edit);
+      if (!task.steps.length) {
+        const local = element("button", "button secondary", "Edit with Local");
+        local.type = "button";
+        local.dataset.action = "edit-local";
+        local.disabled = state.busy;
+        local.addEventListener("click", () => editGoal(task, true));
+        actions.append(local);
+      }
+    }
     if (actions.childElementCount) nodes.push(actions);
     const message = element("p", "form-message");
     message.id = "detail-message";
@@ -378,6 +421,8 @@
       const content = element("div");
       const name = element("div", "step-name");
       const waiting = index === task.current_step && task.status === "waiting_for_approval";
+      item.classList.toggle("waiting", waiting);
+      if (waiting) item.setAttribute("aria-current", "step");
       const stepState = step.completed ? "Completed" : waiting ? "Awaiting approval" : task.status === "cancelled" ? "Cancelled" : task.status === "failed" ? (index === task.current_step && step.attempts > 0 ? "Failed" : "Not reached") : step.approved ? "Approved" : step.requires_approval ? "Approval required" : "Ready";
       name.append(element("code", "", step.tool_name || "No tool assigned"), element("span", "step-state", stepState));
       content.append(name, element("p", "step-description", step.description));
@@ -420,6 +465,7 @@
     if (state.filter) query.set("status", state.filter);
     if (state.search) query.set("search", state.search);
     $("task-list").setAttribute("aria-busy", "true");
+    $("list-loading").hidden = false;
     $("load-more").disabled = true;
     $("list-error").hidden = true;
     try {
@@ -444,6 +490,7 @@
     } finally {
       if (requestId === state.loadId) {
         $("task-list").setAttribute("aria-busy", "false");
+        $("list-loading").hidden = true;
         $("load-more").disabled = false;
       }
     }
@@ -513,11 +560,16 @@
     $("run-button").disabled = busy;
     $("preview-button").disabled = busy;
     $("goal").disabled = busy;
+    $("task-form").setAttribute("aria-busy", String(busy));
     renderPlanner();
     $("run-button").textContent = busy && operation === "run" ? planning.mode === "openai" ? "Planning…" : "Running…" : "Run task";
     $("preview-button").textContent = busy && operation === "preview" ? "Planning…" : "Preview plan";
     document.querySelectorAll(".example-button").forEach((button) => { button.disabled = busy; });
     $("task-detail").querySelectorAll(".detail-actions button").forEach((button) => { button.disabled = busy; });
+    const creating = busy && Boolean(operation);
+    $("composer-progress").hidden = !creating;
+    $("progress-label").textContent = !creating ? "" : planning.mode === "openai" ? "Requesting an AI plan…" : operation === "preview" ? "Validating the tool plan…" : "Running your task…";
+    $("progress-hint").textContent = !creating ? "" : planning.mode === "openai" ? "Waiting for the provider. Every proposed step will need your approval." : "The engine is saving the plan and its execution state.";
   }
 
   async function createTask(execute) {
@@ -545,7 +597,7 @@
       renderDetail();
       await Promise.allSettled([loadTasks(), loadStats()]);
       if (!active(epoch)) return;
-      const message = task.status === "failed" ? "Task saved with an error. Review the details before trying another goal." : task.status === "waiting_for_approval" ? "Task saved and paused for your approval." : execute ? "Task completed. Its plan and result are saved below." : "Plan saved. Review the tool calls, then choose Execute plan.";
+      const message = task.status === "failed" ? task.error || "Task saved with an error. Review the details and choose Edit goal." : task.status === "waiting_for_approval" ? "Task saved and paused for your approval." : execute ? "Task completed. Its plan and result are saved below." : "Plan saved. Review the tool calls, then choose Execute plan.";
       announce("composer-message", message, task.status === "failed");
       if (window.matchMedia("(max-width: 760px)").matches) {
         state.scrollTop = window.scrollY;
@@ -599,6 +651,20 @@
       button.setAttribute("aria-pressed", String(selected));
     });
   }
+
+  // Pointer press feedback never delays an action or animates keyboard navigation.
+  let pressed;
+  const clearPress = () => { pressed?.classList.remove("is-pressed"); pressed = null; };
+  document.addEventListener("pointerdown", (event) => {
+    clearPress();
+    if (event.button !== 0 || !event.isPrimary) return;
+    pressed = event.target.closest(".button:enabled, .icon-button:enabled");
+    pressed?.classList.add("is-pressed");
+  });
+  document.addEventListener("pointerup", clearPress);
+  document.addEventListener("pointercancel", clearPress);
+  document.addEventListener("keydown", clearPress);
+  window.addEventListener("blur", clearPress);
 
   $("connect-form").addEventListener("submit", connect);
   $("disconnect").addEventListener("click", () => disconnect());
