@@ -149,6 +149,11 @@ def _json_plan(goal: str, registry: ToolRegistry) -> list[PlanStep]:
         data = json.loads(goal, parse_constant=_invalid_json_number)
     except (json.JSONDecodeError, RecursionError) as error:
         raise ValueError("The explicit plan must be valid JSON.") from error
+    return validate_tool_plan(data, registry)
+
+
+def validate_tool_plan(data: Any, registry: ToolRegistry) -> list[PlanStep]:
+    """Validate a decoded plan without trusting its tool names, arguments, or state."""
     if not isinstance(data, dict) or set(data) != {"steps"}:
         raise ValueError("An explicit plan must be an object containing only a 'steps' list.")
     raw_steps = data["steps"]

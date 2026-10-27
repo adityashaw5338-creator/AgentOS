@@ -19,14 +19,15 @@ and pause for human approval when a step needs it.
 ## Operating Context
 
 A Python command starts the local web dashboard and protected API. Operators enter
-arithmetic goals or structured plans, inspect results and logs, and approve or cancel
+arithmetic goals, structured plans, or optional AI-planned goals, inspect results and logs, and approve or cancel
 waiting tasks. The CLI and dashboard use the same persistent database.
 
 ## Capabilities and Constraints
 
 The existing repository establishes Python, Pydantic, SQLAlchemy, planning, tools, retries,
-and human approval as the foundation. Built-in tools perform arithmetic. Arbitrary research,
-shell access, file editing, and a configured AI provider are outside this first version.
+and human approval as the foundation. Built-in tools perform arithmetic. Optional AI planning
+uses a configured Responses API provider and requires approval before each proposed step.
+Arbitrary research, shell access, and file editing are not built-in tools.
 The dashboard displays real saved tasks; a new database starts empty.
 
 ## Brand Commitments
@@ -43,6 +44,6 @@ from actual test runs; no customer claims or sample history are supplied with th
 
 ## Open Decisions
 
-Public hosting, multi-user accounts, a broader tool catalog, licensing, and an AI provider
+Public hosting, multi-user accounts, a broader tool catalog, and licensing
 remain future decisions. The initial frontend implementation is a bundled static interface
 served by the Python backend, chosen to keep installation simple.

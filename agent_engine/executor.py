@@ -1,5 +1,6 @@
 """Execute validated plans with bounded retries and mandatory approval gates."""
 
+from collections.abc import Callable
 from typing import Any
 
 from agent_engine.state import AgentState, AgentStatus, utc_now
@@ -49,6 +50,8 @@ def execute_next_step(
     state: AgentState,
     registry: ToolRegistry,
     max_retries: int = 2,
+    *,
+    checkpoint: Callable[[AgentState], object] | None = None,
 ) -> AgentState:
     if (
         isinstance(max_retries, bool)
@@ -102,8 +105,24 @@ def execute_next_step(
     for attempt in range(max_retries + 1):
         attempts_made = attempt + 1
         step.attempts += 1
+        # Persist the attempt before a tool can produce an external side effect.
+        # Storage failures must escape, never enter the tool retry loop.
+        if checkpoint is not None:
+            checkpoint(state)
         try:
             result = registry.execute(step.tool_name, **arguments)
+        except ValueError as error:
+            last_error = error
+            state.execution_log.append(
+                f"Step {step.step_id} failed permanently: {type(error).__name__}: {error}"
+            )
+            break
+        except Exception as error:
+            last_error = error
+            state.execution_log.append(
+                f"Step {step.step_id}, attempt {attempt + 1} failed: {type(error).__name__}: {error}"
+            )
+        else:
             step.result = result
             step.completed = True
             state.result = format_result(result)
@@ -117,19 +136,11 @@ def execute_next_step(
                 state.status = AgentStatus.COMPLETED
                 state.execution_log.append("Task completed successfully.")
             else:
-                state.status = AgentStatus.PENDING
+                # A persisted in-flight plan remains claimed between tool calls.
+                state.status = AgentStatus.RUNNING if checkpoint else AgentStatus.PENDING
+            if checkpoint is not None:
+                checkpoint(state)
             return state
-        except ValueError as error:
-            last_error = error
-            state.execution_log.append(
-                f"Step {step.step_id} failed permanently: {type(error).__name__}: {error}"
-            )
-            break
-        except Exception as error:
-            last_error = error
-            state.execution_log.append(
-                f"Step {step.step_id}, attempt {attempt + 1} failed: {type(error).__name__}: {error}"
-            )
 
     return _fail(
         state,
@@ -143,6 +154,8 @@ def execute_plan(
     registry: ToolRegistry,
     max_steps: int = 32,
     max_retries: int = 2,
+    *,
+    checkpoint: Callable[[AgentState], object] | None = None,
 ) -> AgentState:
     if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 1 <= max_steps <= 128:
         raise ValueError("max_steps must be an integer between 1 and 128.")
@@ -155,14 +168,14 @@ def execute_plan(
     if state.status in TERMINAL_STATUSES:
         return state
     if not state.steps or state.current_step >= len(state.steps):
-        return execute_next_step(state, registry, max_retries=max_retries)
+        return execute_next_step(state, registry, max_retries=max_retries, checkpoint=checkpoint)
 
     steps_executed = 0
     while state.current_step < len(state.steps) and state.status not in TERMINAL_STATUSES:
         if steps_executed >= max_steps:
             return _fail(state, f"Execution limit reached: {max_steps} steps.")
         previous_step = state.current_step
-        execute_next_step(state, registry, max_retries=max_retries)
+        execute_next_step(state, registry, max_retries=max_retries, checkpoint=checkpoint)
         steps_executed += 1
         if state.current_step == previous_step:
             break

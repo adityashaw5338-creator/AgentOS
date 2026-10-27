@@ -32,12 +32,13 @@ def test_snapshot_survives_reopening_database(repository):
 def test_stale_update_cannot_overwrite_saved_task(repository):
     state = run_agent("add 2 and 3", repository=repository, execute=False)
     stale = repository.get_task(state.task_id)
+    original_revision = stale.revision
     state.status = AgentStatus.CANCELLED
     repository.save_task(state)
     stale.status = AgentStatus.COMPLETED
     with pytest.raises(ConcurrentUpdateError):
         repository.save_task(stale)
-    assert stale.revision == 1
+    assert stale.revision == original_revision
     assert repository.get_task(state.task_id).status == AgentStatus.CANCELLED
 
 
@@ -59,7 +60,7 @@ def test_two_database_clients_cannot_claim_same_revision(repository):
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(claim, zip([repository, second], contenders)))
         assert sorted(results) == [False, True]
-        assert repository.get_task(state.task_id).revision == 2
+        assert repository.get_task(state.task_id).revision == state.revision + 1
     finally:
         second.close()
 

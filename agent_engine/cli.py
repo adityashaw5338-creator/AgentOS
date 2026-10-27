@@ -7,7 +7,7 @@ import json
 import re
 import sys
 
-from agent_engine.agent import build_registry, run_agent
+from agent_engine.agent import build_registry, recover_task, run_agent
 from agent_engine.executor import approve_current_step, execute_plan
 from agent_engine.state import AgentState, AgentStatus
 from agent_engine.storage.repository import ConcurrentUpdateError, TaskRepository, get_repository
@@ -26,6 +26,11 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--require-approval", action="store_true", help="Require approval before every step."
         )
+        command.add_argument(
+            "--planner",
+            choices=["local", "openai"],
+            help="Override AGENTOS_PLANNER for this task (default: local).",
+        )
     history = commands.add_parser("history", help="List saved tasks.")
     history.add_argument("--json", action="store_true")
     history.add_argument("--limit", type=int, default=100)
@@ -43,6 +48,16 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--json", action="store_true")
     tools = commands.add_parser("tools", help="List registered tools and argument schemas.")
     tools.add_argument("--json", action="store_true")
+    recovery = commands.add_parser(
+        "recover", help="Close an interrupted run without replaying tools."
+    )
+    recovery.add_argument("task_id")
+    recovery.add_argument("--json", action="store_true")
+    recovery.add_argument(
+        "--confirm-stopped",
+        action="store_true",
+        help="Confirm the worker has stopped; review side effects before creating another task.",
+    )
     server = commands.add_parser("serve", help="Start the dashboard and protected API.")
     server.add_argument("--host", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8000)
@@ -80,7 +95,9 @@ def _execute_saved_plan(state: AgentState, repository: TaskRepository) -> None:
     state.status = AgentStatus.RUNNING
     repository.save_task(state)
     try:
-        execute_plan(state, build_registry())
+        execute_plan(state, build_registry(), checkpoint=repository.save_task)
+    except ConcurrentUpdateError:
+        raise
     except Exception:
         state.status = AgentStatus.FAILED
         state.error = "Execution failed unexpectedly; the task was stopped."
@@ -93,7 +110,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     arguments = list(sys.argv[1:] if argv is None else argv)
     # Preserve the original CLI: agentos "add 2 and 3" and agentos add 2 and 3.
-    known = {"run", "plan", "history", "show", "approve", "cancel", "resume", "tools", "serve"}
+    known = {
+        "run",
+        "plan",
+        "history",
+        "show",
+        "approve",
+        "cancel",
+        "resume",
+        "recover",
+        "tools",
+        "serve",
+    }
     if (
         arguments
         and arguments[0] not in known
@@ -104,10 +132,19 @@ def main(argv: list[str] | None = None) -> int:
         # argparse mistakes a quoted expression beginning with a minus sign for
         # an option. Preserve flags, then mark the calculation as positional.
         if any(re.match(r"-[\d.(]", value) for value in arguments[1:]):
-            flags = [value for value in arguments[1:] if value in {"--json", "--require-approval"}]
-            goal_parts = [
-                value for value in arguments[1:] if value not in {"--json", "--require-approval"}
-            ]
+            flags, goal_parts = [], []
+            position = 1
+            while position < len(arguments):
+                value = arguments[position]
+                if value == "--planner":
+                    flags.extend(arguments[position : position + 2])
+                    position += 2
+                    continue
+                if value in {"--json", "--require-approval"} or value.startswith("--planner="):
+                    flags.append(value)
+                else:
+                    goal_parts.append(value)
+                position += 1
             arguments = [arguments[0], *flags, "--", *goal_parts]
     args = parser.parse_args(arguments)
     if args.command is None:
@@ -154,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
                 repository=repository,
                 execute=args.command == "run",
                 require_approval=args.require_approval,
+                planner=args.planner,
             )
         elif args.command == "history":
             tasks = repository.list_tasks(
@@ -194,8 +232,11 @@ def main(argv: list[str] | None = None) -> int:
                 state.error = None
                 state.execution_log.append("Task cancelled by the user.")
                 repository.save_task(state)
+            elif args.command == "recover":
+                recover_task(state, confirm_stopped=args.confirm_stopped)
+                repository.save_task(state)
         _print_task(state, args.json)
-        return 1 if state.status == AgentStatus.FAILED else 0
+        return 1 if state.status == AgentStatus.FAILED and args.command != "recover" else 0
     except ConcurrentUpdateError:
         print(
             "Error: This task changed in another process. Reload it before trying again.",

@@ -6,6 +6,12 @@ services:
     environment:
       AGENTOS_API_TOKEN: ${AGENTOS_API_TOKEN:?Set AGENTOS_API_TOKEN in .env}
       AGENTOS_ALLOWED_HOSTS: ${AGENTOS_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      AGENTOS_CORS_ORIGINS: ${AGENTOS_CORS_ORIGINS-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
+      AGENTOS_PLANNER: ${AGENTOS_PLANNER:-local}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AGENTOS_MODEL: ${AGENTOS_MODEL:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      AGENTOS_AI_TIMEOUT: ${AGENTOS_AI_TIMEOUT:-20}
     volumes:
       - agentos-data:/data
     restart: unless-stopped

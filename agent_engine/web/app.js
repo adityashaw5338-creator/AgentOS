@@ -4,6 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const session = { token: "", epoch: 0 };
   const state = { tools: [], tasks: [], total: 0, selected: null, filter: "", search: "", route: "tasks", loadId: 0, detailLoadId: 0, busy: false, scrollTop: 0, mobileComposerOpen: false };
+  const planning = { mode: "local", available: false, model: "", message: "", defaultInvalid: false, loaded: false, touched: false, loadId: 0, localApproval: false, timeoutMs: 30000 };
   const statusNames = { planning: "Planning", pending: "Ready", running: "Running", completed: "Completed", failed: "Failed", waiting_for_approval: "Needs approval", cancelled: "Cancelled" };
   const cancellable = new Set(["pending", "planning", "waiting_for_approval"]);
   const pageSize = 25;
@@ -52,12 +53,13 @@
   }
 
   async function api(path, options = {}, token = session.token) {
+    const { timeoutMs = 30000, ...requestOptions } = options;
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 30000);
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     const headers = { Authorization: `Bearer ${token}` };
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     try {
-      const response = await fetch(path, { ...options, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal, cache: "no-store" });
+      const response = await fetch(path, { ...requestOptions, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal, cache: "no-store" });
       const body = await response.json().catch((error) => {
         if (error.name === "AbortError") throw error;
         return null;
@@ -78,6 +80,77 @@
 
   function handleAuth(error) {
     if (error.status === 401 && session.token) disconnect("Your connection token is no longer valid. Enter the server’s current token.");
+  }
+
+  function renderPlanner() {
+    const ai = planning.mode === "openai";
+    $("planner").value = planning.mode;
+    $("planner").disabled = state.busy;
+    $("planner-openai").disabled = !planning.available;
+    $("planner-openai").textContent = planning.available && planning.model ? `AI · ${planning.model}` : "AI";
+    $("require-approval").checked = ai || planning.localApproval;
+    $("require-approval").disabled = state.busy || ai;
+    $("composer-scope").textContent = ai ? "A goal for your registered tools" : "Arithmetic or a structured plan";
+    let hint = "";
+    if (session.token) {
+      if (!planning.loaded) hint = "Checking AI availability. Local planning is ready.";
+      else if (ai) hint = "Your goal and tool schemas are sent to the configured AI provider. Every step needs your approval.";
+      else if (planning.defaultInvalid) hint = "Local is selected for this task.";
+      else if (planning.available) hint = "AI can turn natural-language goals into plans for your registered tools.";
+      else hint = planning.message || "AI is not configured. Set up an AI provider on the server to enable it.";
+      if (planning.loaded && planning.defaultInvalid) hint = `${planning.message || "The server’s default planner is invalid."} ${hint}`;
+    }
+    $("planner-hint").textContent = hint;
+    $("planner-hint").hidden = !hint;
+  }
+
+  function resetPlanner() {
+    planning.loadId += 1;
+    planning.mode = "local";
+    planning.available = false;
+    planning.model = "";
+    planning.message = "";
+    planning.defaultInvalid = false;
+    planning.loaded = false;
+    planning.touched = false;
+    planning.localApproval = false;
+    planning.timeoutMs = 30000;
+    $("planner").setAttribute("aria-busy", "false");
+    renderPlanner();
+  }
+
+  async function loadPlanner() {
+    const epoch = session.epoch;
+    const requestId = ++planning.loadId;
+    $("planner").setAttribute("aria-busy", "true");
+    try {
+      const metadata = await api("/api/planner");
+      if (!active(epoch) || requestId !== planning.loadId) return;
+      if (!metadata || typeof metadata.openai_available !== "boolean" || !["local", "openai", null].includes(metadata.default)) throw new Error("Invalid planner configuration.");
+      planning.available = metadata.openai_available;
+      planning.model = typeof metadata.model === "string" ? metadata.model : "";
+      planning.message = typeof metadata.message === "string" ? metadata.message : "";
+      planning.defaultInvalid = metadata.default === null;
+      planning.timeoutMs = typeof metadata.timeout_seconds === "number" && Number.isFinite(metadata.timeout_seconds) ? Math.max(30000, Math.min(120, metadata.timeout_seconds) * 3000 + 5000) : 30000;
+      planning.loaded = true;
+      if (!planning.available) planning.mode = "local";
+      else if (!planning.touched) planning.mode = metadata.default || "local";
+      renderPlanner();
+    } catch (error) {
+      if (!active(epoch) || requestId !== planning.loadId) return;
+      handleAuth(error);
+      if (!active(epoch)) return;
+      planning.mode = "local";
+      planning.available = false;
+      planning.model = "";
+      planning.defaultInvalid = false;
+      planning.timeoutMs = 30000;
+      planning.message = "AI availability could not be checked. Local is selected; refresh to try again.";
+      planning.loaded = true;
+      renderPlanner();
+    } finally {
+      if (active(epoch) && requestId === planning.loadId) $("planner").setAttribute("aria-busy", "false");
+    }
   }
 
   async function healthCheck() {
@@ -144,7 +217,7 @@
     state.search = "";
     state.filter = "";
     state.mobileComposerOpen = false;
-    $("require-approval").checked = false;
+    resetPlanner();
     syncFilters();
     announce("connect-error", message, Boolean(message));
     setComposerBusy(false);
@@ -166,6 +239,7 @@
       if (session.epoch !== epoch) return;
       session.token = candidate;
       session.epoch += 1;
+      resetPlanner();
       state.tools = catalog.tools || [];
       $("access-token").value = "";
       $("connect-view").hidden = true;
@@ -404,6 +478,9 @@
     if (!session.token) return;
     const epoch = session.epoch;
     $("refresh").disabled = true;
+    // Planner setup is optional; a slow metadata response must not hold the local
+    // workspace or a later connection open. loadPlanner guards its own session.
+    loadPlanner();
     await Promise.allSettled([loadTasks(), loadStats(), refreshSelected(), healthCheck()]);
     if (session.epoch === epoch) $("refresh").disabled = false;
   }
@@ -436,8 +513,8 @@
     $("run-button").disabled = busy;
     $("preview-button").disabled = busy;
     $("goal").disabled = busy;
-    $("require-approval").disabled = busy;
-    $("run-button").textContent = busy && operation === "run" ? "Running…" : "Run task";
+    renderPlanner();
+    $("run-button").textContent = busy && operation === "run" ? planning.mode === "openai" ? "Planning…" : "Running…" : "Run task";
     $("preview-button").textContent = busy && operation === "preview" ? "Planning…" : "Preview plan";
     document.querySelectorAll(".example-button").forEach((button) => { button.disabled = busy; });
     $("task-detail").querySelectorAll(".detail-actions button").forEach((button) => { button.disabled = busy; });
@@ -448,11 +525,15 @@
     const epoch = session.epoch;
     const goal = $("goal").value.trim();
     if (!goal) { announce("composer-message", "Enter a task goal before continuing.", true); return; }
+    const planner = planning.mode;
+    const requireApproval = planner === "openai" || $("require-approval").checked;
+    const timeoutMs = planner === "openai" ? planning.timeoutMs : 30000;
+    planning.touched = true;
     state.busy = true;
     setComposerBusy(true, execute ? "run" : "preview");
     announce("composer-message", "");
     try {
-      const task = await api("/api/tasks", { method: "POST", body: { goal, execute, require_approval: $("require-approval").checked } });
+      const task = await api("/api/tasks", { method: "POST", timeoutMs, body: { goal, execute, require_approval: requireApproval, planner } });
       if (!active(epoch)) return;
       state.detailLoadId += 1;
       state.selected = task;
@@ -526,6 +607,12 @@
   $("mobile-new-task").addEventListener("click", () => { state.mobileComposerOpen = $("task-composer").classList.contains("mobile-collapsed"); syncMobileComposer(); if (state.mobileComposerOpen) $("goal").focus(); });
   $("task-form").addEventListener("submit", (event) => { event.preventDefault(); createTask(true); });
   $("preview-button").addEventListener("click", () => createTask(false));
+  $("planner").addEventListener("change", () => {
+    planning.mode = $("planner").value === "openai" && planning.available ? "openai" : "local";
+    planning.touched = true;
+    renderPlanner();
+  });
+  $("require-approval").addEventListener("change", () => { if (planning.mode === "local") planning.localApproval = $("require-approval").checked; });
   $("load-more").addEventListener("click", () => loadTasks(true));
   $("goal").addEventListener("keydown", (event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); createTask(true); } });
   document.querySelectorAll("[data-example]").forEach((button) => button.addEventListener("click", () => { $("goal").value = button.dataset.example; $("goal").focus(); announce("composer-message", ""); }));
