@@ -42,6 +42,7 @@
           <h1 id="connect-heading">Connect to your engine</h1>
           <p>Enter the access token printed when you started AgentOS to open your local workspace.</p>
         </div>
+        <ol class="connect-flow" aria-label="How a task runs"><li><span>1</span>Plan</li><li><span>2</span>Validate</li><li><span>3</span>Execute</li></ol>
         <form id="connect-form" class="connect-form">
           <label for="access-token">Access token</label>
           <input id="access-token" name="token" type="password" autocomplete="off" spellcheck="false" required aria-describedby="token-hint connect-error">
@@ -71,7 +72,7 @@
               <div class="goal-label"><label for="goal">Task goal</label><span class="small-text shortcut-hint">Ctrl / ⌘ + Enter to run</span></div>
               <textarea id="goal" name="goal" rows="2" maxlength="4000" required spellcheck="false" placeholder="For example, calculate (2 + 3) * 4" aria-describedby="goal-hint composer-message"></textarea>
               <p id="planner-hint" class="field-hint planner-hint" role="status" hidden></p>
-              <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step before execution</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>
+              <div class="composer-controls"><label class="checkbox-label"><input id="require-approval" type="checkbox">Approve each step</label><div class="button-row"><button id="preview-button" class="button secondary" type="button">Preview plan</button><button id="run-button" class="button primary" type="submit">Run task</button></div></div>
               <p id="composer-message" class="form-message" role="status" hidden></p>
             </form>
             <div id="composer-progress" class="activity-notice" role="status" hidden><span class="activity-spinner" aria-hidden="true"></span><div><strong id="progress-label"></strong><p id="progress-hint"></p></div></div>
