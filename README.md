@@ -9,6 +9,17 @@ validated calls to the same registered tools. The dashboard and CLI share persis
 
 ## Quick start
 
+On Windows, double-click **start.bat**. It uses the project's `.venv`, creates it and
+installs dependencies on the first run if needed, then opens the dashboard after the server
+starts. Python 3.11 or newer must be installed; first-time setup needs internet access.
+Keep the console open and paste its access token into the dashboard. Press Ctrl+C to stop.
+
+The launcher reads the project's private `.env` file, including your provider settings.
+Those values override inherited settings for this process only; nothing is added to Git
+or your Windows environment. Without a `.env`, local planning works with the usual defaults.
+Use `start.bat --port 8001` if port 8000 is occupied, or `start.bat --no-browser` to skip
+opening the browser. Direct CLI commands below still use exported environment variables.
+
 Requires Python 3.11 or newer; Python 3.12 is recommended. Clone the repository or
 download and extract its source archive, then open the project directory.
 

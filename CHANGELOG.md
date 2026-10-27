@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added a Windows `start.bat` launcher with first-run dependency setup, private `.env`
+  loading, browser opening after server startup, and clear port-conflict errors.
+
 ## 0.2.0 — 2026-10-27
 
 ### Added
